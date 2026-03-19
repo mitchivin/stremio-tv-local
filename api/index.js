@@ -3,7 +3,7 @@ const express = require('express')
 const path = require('path')
 
 const BASE_URL = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
+  ? `https://stremio-tv-local.vercel.app`
   : 'http://localhost:7000'
 
 const A1X_SOURCES = [

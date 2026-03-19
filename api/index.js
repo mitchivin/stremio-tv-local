@@ -12,21 +12,54 @@ const FETCH_HEADERS = {
   'Accept': '*/*'
 }
 
-const A1X_GROUPS = [
-  'Live Event | PPV',
-  'UHD | 4K',
-  'EPL',
-  'UK Sports',
-  'UK Channels',
-  'US Sports',
-  'US Channels',
-  'CA Sports',
-  'CA Channels',
-  'AU Sports',
-  'NZ Sports',
-  'EU Sports',
-  'World Sports'
-]
+// Channels to pull into News (matched by exact name)
+const NEWS_CHANNELS = new Set([
+  'BBC News FHD', 'CNN UK FHD', 'GB News FHD', 'Sky News FHD',
+  'ABC News Live', 'CBS Sports HQ FHD', 'NBC News NOW', 'NewsMax',
+  'CNBC', 'CP24', 'CTV News', 'CBC News Network', 'Global News', 'MS NOW'
+])
+
+// Channels to exclude entirely (non-English or unwanted)
+const EXCLUDED_CHANNELS = new Set([
+  // Non-English EU Sports
+  'IRE: Premier Sports 1 FHD', 'IRE: Premier Sports 2 FHD',
+  'DE: Sportdigital Fussball FHD', 'DE: Sky Sport Bundesliga FHD',
+  'DE: Sky Sport Top Event FHD', 'DE: Sky Sport Premier League FHD',
+  'AL: Super Sport 1 FHD', 'AL: Super Sport 2 FHD', 'AL: Super Sport 3 FHD',
+  'NL: Ziggo Sport FHD', 'NL: Ziggo Sport 2 FHD', 'NL: Ziggo Sport 3 FHD',
+  'NL: Ziggo Sport 4 FHD',
+  // Non-English World Sports
+  'Star Sports Select 1 FHD', 'Star Sports Select 2 FHD',
+  // Non-English EPL
+  'Now Sports PL 1 FHD', 'Now Sports PL 2 FHD',
+  'Astro Premier League', 'Astro Premier League 2', 'Astro Grandstand',
+  'Hub Premier 1 FHD', 'Hub Premier 2 FHD', 'Hub Premier 3 FHD', 'Hub Premier 4 FHD',
+  // Non-English UHD
+  'MY: Astro Sports UHD', 'HK: Now Sports 1 4k', 'SG: Hub Premier 2 UHD',
+  'SE: V Sport Ultra HD', 'IRIB UHD',
+  // Non-English misc
+  'Fashion TV UHD', 'MyZen 4K (Multi Audio)', 'HOME 4K', 'MUSEUM TV 4K',
+  'Loupe 4K', 'Travelxp 4K', 'Love Nature 4K'
+])
+
+// Which A1X groups map to which of our 3 categories
+const GROUP_TO_CATEGORY = {
+  'NZ Sports': 'Sports',
+  'AU Sports': 'Sports',
+  'UK Sports': 'Sports',
+  'US Sports': 'Sports',
+  'CA Sports': 'Sports',
+  'EPL': 'Sports',
+  'UHD | 4K': 'Sports',
+  'Live Event | PPV': 'Sports',
+  'UK Channels': 'Entertainment',
+  'US Channels': 'Entertainment',
+  'CA Channels': 'Entertainment',
+  'EU Sports': 'Sports',
+  'World Sports': 'Sports'
+}
+
+const CATEGORIES = ['Sports', 'Entertainment', 'News']
 
 let cache = null
 
@@ -48,10 +81,7 @@ function parseM3U(text) {
       if (!lines[j].startsWith('#')) { url = lines[j]; break }
     }
     if (url && group && name) {
-      entries.push({
-        id: `a1x-${slugify(group)}-${slugify(name)}`,
-        name, group, logo: tvgLogo, url
-      })
+      entries.push({ group, name, logo: tvgLogo, url })
     }
   }
   return entries
@@ -76,14 +106,45 @@ async function getCache() {
 
   if (!text) throw new Error('All A1X sources failed')
 
-  const entries = parseM3U(text)
-  const byGroup = {}
-  for (const g of A1X_GROUPS) byGroup[g] = []
-  for (const e of entries) {
-    if (byGroup[e.group] !== undefined) byGroup[e.group].push(e)
+  const raw = parseM3U(text)
+
+  // Build our 3 categories
+  const byCategory = { Sports: [], Entertainment: [], News: [] }
+
+  for (const entry of raw) {
+    if (EXCLUDED_CHANNELS.has(entry.name)) continue
+
+    // News channels get pulled out regardless of their A1X group
+    if (NEWS_CHANNELS.has(entry.name)) {
+      const id = `a1x-news-${slugify(entry.name)}`
+      byCategory.News.push({ id, name: entry.name, logo: entry.logo, url: entry.url, category: 'News' })
+      continue
+    }
+
+    const category = GROUP_TO_CATEGORY[entry.group]
+    if (!category) continue
+
+    const id = `a1x-${slugify(category)}-${slugify(entry.name)}`
+    byCategory[category].push({ id, name: entry.name, logo: entry.logo, url: entry.url, category })
   }
 
-  cache = { entries, byGroup, expiry: now + 20 * 60 * 1000 }
+  // Dedupe by id within each category
+  for (const cat of CATEGORIES) {
+    const seen = new Set()
+    byCategory[cat] = byCategory[cat].filter(ch => {
+      if (seen.has(ch.id)) return false
+      seen.add(ch.id)
+      return true
+    })
+  }
+
+  // Build flat lookup by id
+  const allEntries = {}
+  for (const cat of CATEGORIES) {
+    for (const ch of byCategory[cat]) allEntries[ch.id] = ch
+  }
+
+  cache = { byCategory, allEntries, expiry: now + 20 * 60 * 1000 }
   return cache
 }
 
@@ -91,14 +152,14 @@ const manifest = {
   id: 'org.a1x.iptv',
   version: '1.0.0',
   name: 'A1X IPTV',
-  description: 'Live sports and TV channels via A1X',
+  description: 'Live sports, entertainment and news via A1X',
   resources: ['catalog', 'meta', 'stream'],
   types: ['tv'],
   catalogs: [{
     type: 'tv',
     id: 'a1x-catalog',
     name: 'A1X IPTV',
-    extra: [{ name: 'genre', options: A1X_GROUPS, isRequired: false }]
+    extra: [{ name: 'genre', options: CATEGORIES, isRequired: false }]
   }],
   idPrefixes: ['a1x-']
 }
@@ -107,10 +168,10 @@ const builder = new addonBuilder(manifest)
 
 builder.defineCatalogHandler(async ({ type, id, extra }) => {
   if (type !== 'tv' || id !== 'a1x-catalog') return { metas: [] }
-  const group = extra?.genre || 'NZ Sports'
+  const category = extra?.genre || 'Sports'
   try {
-    const { byGroup } = await getCache()
-    const channels = byGroup[group] || []
+    const { byCategory } = await getCache()
+    const channels = byCategory[category] || []
     return {
       metas: channels.map(ch => ({
         id: ch.id,
@@ -118,7 +179,7 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
         name: ch.name,
         logo: ch.logo || undefined,
         poster: ch.logo || undefined,
-        genres: [ch.group]
+        genres: [ch.category]
       }))
     }
   } catch (err) {
@@ -129,10 +190,10 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
 
 builder.defineMetaHandler(async ({ id }) => {
   try {
-    const { entries } = await getCache()
-    const ch = entries.find(e => e.id === id)
+    const { allEntries } = await getCache()
+    const ch = allEntries[id]
     if (!ch) return { meta: null }
-    return { meta: { id, type: 'tv', name: ch.name, genres: [ch.group] } }
+    return { meta: { id, type: 'tv', name: ch.name, genres: [ch.category] } }
   } catch (err) {
     return { meta: null }
   }
@@ -140,8 +201,8 @@ builder.defineMetaHandler(async ({ id }) => {
 
 builder.defineStreamHandler(async ({ id }) => {
   try {
-    const { entries } = await getCache()
-    const ch = entries.find(e => e.id === id)
+    const { allEntries } = await getCache()
+    const ch = allEntries[id]
     if (!ch) return { streams: [] }
     return {
       streams: [{

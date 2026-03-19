@@ -159,7 +159,7 @@ const manifest = {
     type: 'tv',
     id: 'a1x-catalog',
     name: 'A1X IPTV',
-    extra: [{ name: 'genre', options: CATEGORIES, isRequired: false }]
+    extra: [{ name: 'genre', options: CATEGORIES, isRequired: true }]
   }],
   idPrefixes: ['a1x-']
 }
@@ -179,6 +179,7 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
         name: ch.name,
         logo: ch.logo || undefined,
         poster: ch.logo || undefined,
+        posterShape: 'square',
         genres: [ch.category]
       }))
     }

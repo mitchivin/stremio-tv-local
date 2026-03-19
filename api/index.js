@@ -31,7 +31,7 @@ const AU_ID_TO_A1X_NAME = {
   'au|SP:uk_sports|SkySp.News.HD.uk|tv':      'Sky Sports News FHD',
   'au|SP:uk_sports|SkySp.F1.uk|tv':           'Sky Sports F1 FHD',
   'au|SP:uk_sports|SkySp.Fball.HD.uk|tv':     'Sky Sports Football FHD',
-  'au|SP:uk_sports|SkySp.Cricket.HD.uk|tv':   'Sky Sports Cricket FHD',
+  'au|SP:uk_sports|SkySpCricket.HD.uk|tv':    'Sky Sports Cricket FHD',
   'au|SP:uk_sports|SkySp.Golf.HD.uk|tv':      'Sky Sports Golf FHD',
   'au|SP:uk_sports|SkySp.Mix.HD.uk|tv':       'Sky Sports Mix FHD',
   'au|SP:uk_sports|SkySp.Racing.HD.uk|tv':    'Sky Sports Racing FHD',
@@ -99,6 +99,11 @@ const manifest = {
       name: 'stream',
       types: ['tv'],
       idPrefixes: ['au|']
+    },
+    {
+      name: 'meta',
+      types: ['tv'],
+      idPrefixes: ['au|']
     }
   ],
   types: ['tv'],
@@ -106,6 +111,18 @@ const manifest = {
 }
 
 const builder = new addonBuilder(manifest)
+
+builder.defineMetaHandler(async ({ id }) => {
+  const a1xName = AU_ID_TO_A1X_NAME[id]
+  if (!a1xName) return { meta: null }
+  return {
+    meta: {
+      id,
+      type: 'tv',
+      name: a1xName
+    }
+  }
+})
 
 builder.defineStreamHandler(async ({ id }) => {
   const a1xName = AU_ID_TO_A1X_NAME[id]

@@ -974,7 +974,7 @@
           Rows</button>
         <button class="nav-item" id="nav-install" onclick="switchNav('install')"><span class="nav-icon">📥</span>
           Install</button>
-        <button class="nav-item" id="nav-live-tv" onclick="switchNav('live-tv')"><span class="nav-icon">📡</span> Live TV Addons</button>
+        <button class="nav-item" id="nav-custom-channels" onclick="switchNav('custom-channels')"><span class="nav-icon">📺</span> Custom Channels</button>
         <button class="nav-item" id="nav-account" onclick="openModal('stremio-login-modal')"><span
             class="nav-icon">👤</span> Link Account</button>
         <button class="nav-item" id="nav-sync" onclick="syncStremio()" title="Force Stremio to reload your rows"><span class="nav-icon">🔄</span> Sync Stremio</button>
@@ -1067,17 +1067,27 @@
         </div>
       </div>
 
-      <!-- LIVE TV ADDONS -->
-      <div class="panel" id="panel-live-tv">
+      <!-- CUSTOM CHANNELS -->
+      <div class="panel" id="panel-custom-channels">
         <div class="ph">
           <div class="ph-left">
-            <div class="ph-title">Live TV Addons</div>
-            <div class="ph-desc">All installed addons that provide live TV channels.</div>
+            <div class="ph-title">Custom Channels</div>
+            <div class="ph-desc">Build channels from multiple addon sources.</div>
           </div>
-          <button class="btn btn-ghost" onclick="loadLiveTvAddons()">↺ Refresh</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost" id="btn-auto-detect" onclick="autoDetectChannels()">⚡ Auto-Detect</button>
+            <button class="btn btn-ghost" onclick="openCustomChannelModal(null)">+ New Channel</button>
+          </div>
         </div>
         <div class="pb">
-          <div id="live-tv-list"><div class="empty"><div class="empty-icon">⏳</div><div class="empty-text">Loading…</div></div></div>
+          <div id="auto-detect-section" style="display:none;margin-bottom:24px;">
+            <div style="font-size:12px;font-weight:700;color:var(--soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
+              Matched Channels <span id="auto-detect-count" style="font-weight:400;color:var(--muted);"></span>
+            </div>
+            <div id="auto-detect-list"></div>
+          </div>
+          <div style="font-size:12px;font-weight:700;color:var(--soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;" id="saved-channels-label" style="display:none;">Saved Channels</div>
+          <div id="custom-channels-list"></div>
         </div>
       </div>
 
@@ -1158,7 +1168,6 @@
                 <div class="ph-title">TV Channels</div>
                 <div class="ph-desc">Browse live TV Channels from your addons.</div>
               </div>
-              <button class="btn btn-ghost" onclick="openCustomChannelModal(null)" style="flex-shrink:0;">+ Custom Channel</button>
             </div>
             <div class="pb" id="tv-body" style="display:flex; flex-direction:column; height:100%;"></div>
           </div>
@@ -1245,6 +1254,12 @@
     let dirty = false;
     let movieType = 'movie', movieResults = [], movieTimer = null;
     let tvAddons = [], tvChannels = [];
+    const EXCLUDED_ADDON_IDS = new Set(['com.stremirow.custom']);
+    function isTvAddon(a) {
+      if (EXCLUDED_ADDON_IDS.has(a.manifest.id)) return false;
+      const t = a.manifest.types || [];
+      return t.includes('tv') || t.includes('channel');
+    }
 
     // ─── Util
     function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
@@ -1267,13 +1282,14 @@
 
     // ─── Nav
     function switchNav(name) {
-      ['rows', 'install', 'live-tv'].forEach(n => {
+      ['rows', 'install', 'custom-channels'].forEach(n => {
         const navEl = document.getElementById('nav-' + n);
         const panelEl = document.getElementById('panel-' + n);
         if (navEl) navEl.classList.toggle('active', n === name);
         if (panelEl) panelEl.classList.toggle('active', n === name);
       });
-      if (name === 'live-tv') loadLiveTvAddons();
+      if (name === 'install') renderInstallTab();
+      if (name === 'custom-channels') renderCustomChannelsPanel();
     }
 
     // ─── Rows
@@ -1507,7 +1523,7 @@
       if (idx >= 0) {
         tempRowItems.splice(idx, 1);
       } else {
-        tempRowItems.unshift({ id: item.id, type: item.type, title: item.title, thumbnail: item.thumbnail || '', description: item.description || '' });
+        tempRowItems.push({ id: item.id, type: item.type, title: item.title, thumbnail: item.thumbnail || '', description: item.description || '' });
       }
       renderRowItems();
       refreshDiscoveryGrids();
@@ -1729,7 +1745,7 @@
           return;
         }
         const d = await resp.json();
-        tvAddons = (d.addons || []).filter(a => { const t = a.manifest.types || []; return t.includes('tv') || t.includes('channel'); });
+        tvAddons = (d.addons || []).filter(isTvAddon);
         if (!tvAddons.length) { body.innerHTML = '<div class="empty"><div class="empty-icon">📡</div><div class="empty-text">No IPTV or TV addons found in your Stremio account.</div></div>'; return; }
 
         body.innerHTML = `
@@ -1765,7 +1781,7 @@
             });
           });
 
-          let h = '<option value="all">All Channels</option>';
+          let h = '<option value="all">All Channels</option><option value="__custom__">Custom Channels</option>';
           Array.from(genres).sort((a, b) => {
             const al = a.toLowerCase();
             const bl = b.toLowerCase();
@@ -1793,7 +1809,14 @@
       } catch (e) { body.innerHTML = `<div class="empty"><div class="empty-icon">❌</div><div class="empty-text">${esc(e.message)}</div></div>`; }
     }
     function onTvGenreChange() {
-      fetchTvChannels();
+      const genre = document.getElementById('tv-genre')?.value;
+      if (genre === '__custom__') {
+        const customs = getAllCustomChannels();
+        tvChannels = customs;
+        renderTVGrid(customs);
+      } else {
+        fetchTvChannels();
+      }
     }
     async function fetchTvChannels() {
       const grid = document.getElementById('tv-grid');
@@ -2017,7 +2040,7 @@
       try {
         const d = await fetch('/api/stremio/addons').then(r => r.json());
         if (d.error) throw new Error(d.error);
-        const localTvAddons = (d.addons || []).filter(a => (a.manifest.types || []).some(t => t === 'tv' || t === 'channel'));
+        const localTvAddons = (d.addons || []).filter(isTvAddon);
         // Update module-level tvAddons so the custom channel builder can use them without re-fetching
         tvAddons = localTvAddons;
         if (!localTvAddons.length) {
@@ -2041,8 +2064,186 @@
       }
     }
 
-    // ─── Custom Channel Builder
-    let ccSources = [];       // [{addonName, addonUrl, channelId, channelName, channelLogo}]
+    // ─── Custom Channels Panel
+    function getAllCustomChannels() {
+      const channels = [];
+      const seen = new Set();
+      for (const row of config.rows) {
+        for (const item of (row.items || [])) {
+          if (item.id && item.id.startsWith('stremirow-') && !seen.has(item.id)) {
+            seen.add(item.id);
+            channels.push(item);
+          }
+        }
+      }
+      return channels;
+    }
+
+    function renderCustomChannelsPanel() {
+      const el = document.getElementById('custom-channels-list');
+      const label = document.getElementById('saved-channels-label');
+      if (!el) return;
+      const channels = getAllCustomChannels();
+      if (label) label.style.display = channels.length ? '' : 'none';
+      if (!channels.length) {
+        el.innerHTML = '<div class="empty"><div class="empty-icon">📺</div><div class="empty-text">No custom channels yet. Click Auto-Detect or + New Channel.</div></div>';
+        return;
+      }
+      el.innerHTML = channels.map(ch => `
+        <div style="background:var(--surf2);border:1px solid var(--border2);border-radius:var(--r);padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">
+          <div style="width:44px;height:44px;border-radius:6px;background:var(--surf3);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+            ${ch.thumbnail ? `<img src="${esc(ch.thumbnail)}" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'">` : '<span style="font-size:20px;">📺</span>'}
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:700;color:var(--text);">${esc(ch.title)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">${(ch.sources||[]).length} source${(ch.sources||[]).length !== 1 ? 's' : ''}: ${(ch.sources||[]).map(s=>esc(s.addonName)).join(', ')}</div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm" onclick='openCustomChannelModal(${safeJson(ch)})'>✏ Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteCustomChannel('${esc(ch.id)}')">🗑</button>
+          </div>
+        </div>`).join('');
+    }
+
+    // ─── Auto-Detect matched channels across addons
+    function normaliseName(n) {
+      return n.toLowerCase()
+        .replace(/\b(fhd|uhd|hd|4k|sd)\b/g, '')   // quality suffixes
+        .replace(/\b(nz|au|uk|us|ca|ie|de|nl|al|se|sg|hk|my)\b/g, '') // country codes
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+    }
+
+    async function autoDetectChannels() {
+      const btn = document.getElementById('btn-auto-detect');
+      const section = document.getElementById('auto-detect-section');
+      const list = document.getElementById('auto-detect-list');
+      const countEl = document.getElementById('auto-detect-count');
+      btn.disabled = true; btn.textContent = '⏳ Scanning…';
+      list.innerHTML = '<div class="empty"><div class="empty-icon">⏳</div><div class="empty-text">Fetching channels from all addons…</div></div>';
+      section.style.display = '';
+
+      try {
+        // Ensure addons are loaded
+        if (!tvAddons.length) {
+          const d = await fetch('/api/stremio/addons').then(r => r.json());
+          tvAddons = (d.addons || []).filter(isTvAddon);
+        }
+        if (!tvAddons.length) {
+          list.innerHTML = '<div class="empty"><div class="empty-icon">🔒</div><div class="empty-text">Sign in via Link Account to scan your addons.</div></div>';
+          return;
+        }
+
+        // Fetch all channels from all addons (base catalogs + all genre sub-pages)
+        const addonChannels = {};
+        await Promise.all(tvAddons.map(async addon => {
+          const baseUrl = addon.transportUrl.replace('/manifest.json', '');
+          const cats = (addon.manifest.catalogs || []).filter(c => c.type === 'tv' || c.type === 'channel');
+          const urls = [];
+          cats.forEach(cat => {
+            urls.push(`${baseUrl}/catalog/${cat.type}/${cat.id}.json`);
+            const genreExtra = (cat.extra || []).find(e => e.name === 'genre');
+            if (genreExtra && genreExtra.options) {
+              genreExtra.options.forEach(g => urls.push(`${baseUrl}/catalog/${cat.type}/${cat.id}/genre=${encodeURIComponent(g)}.json`));
+            }
+          });
+          const results = await Promise.all(urls.map(u =>
+            fetch(`/api/stremio/proxy-catalog?url=${encodeURIComponent(u)}`).then(r => r.json()).catch(() => ({ metas: [] }))
+          ));
+          const seen = new Set();
+          addonChannels[addon.manifest.name] = [];
+          results.forEach(d => (d.metas || []).forEach(m => {
+            if (m && m.id && !seen.has(m.id)) {
+              seen.add(m.id);
+              addonChannels[addon.manifest.name].push({ id: m.id, name: m.name, logo: m.poster || m.logo || '', addonUrl: baseUrl, addonName: addon.manifest.name });
+            }
+          }));
+        }));
+
+        // Build normalised name -> [{addonName, channel}] map
+        const nameMap = {}; // normalisedName -> [{addonName, channel}]
+        for (const [addonName, channels] of Object.entries(addonChannels)) {
+          for (const ch of channels) {
+            const key = normaliseName(ch.name);
+            if (!key) continue;
+            if (!nameMap[key]) nameMap[key] = [];
+            nameMap[key].push({ addonName, channel: ch });
+          }
+        }
+
+        // Filter: must appear in 2+ different addons, not already created
+        const existingNames = new Set(getAllCustomChannels().map(c => normaliseName(c.title)));
+        const matches = Object.entries(nameMap)
+          .filter(([key, entries]) => {
+            const addons = new Set(entries.map(e => e.addonName));
+            return addons.size >= 2 && !existingNames.has(key);
+          })
+          .map(([, entries]) => {
+            // Dedupe sources by addonName — keep first occurrence per addon
+            const seenAddons = new Set();
+            const sources = [];
+            for (const e of entries) {
+              if (!seenAddons.has(e.addonName)) {
+                seenAddons.add(e.addonName);
+                sources.push({ addonName: e.addonName, addonUrl: e.channel.addonUrl, channelId: e.channel.id, channelName: e.channel.name });
+              }
+            }
+            const display = entries[0].channel;
+            return { name: display.name, logo: display.logo, sources };
+          })
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        countEl.textContent = `(${matches.length} found)`;
+
+        if (!matches.length) {
+          list.innerHTML = '<div class="empty"><div class="empty-icon">✅</div><div class="empty-text">No new matches — all shared channels already created.</div></div>';
+          return;
+        }
+
+        list.innerHTML = matches.map((m, i) => `
+          <div id="ad-row-${i}" style="background:var(--surf2);border:1px solid var(--border2);border-radius:var(--r);padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;gap:12px;">
+            <div style="width:40px;height:40px;border-radius:6px;background:var(--surf3);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+              ${m.logo ? `<img src="${esc(m.logo)}" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'">` : '<span style="font-size:18px;">📺</span>'}
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:600;color:var(--text);">${esc(m.name)}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:1px;">${m.sources.map(s => esc(s.addonName)).join(' · ')}</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick='createDetectedChannel(${safeJson(m)}, ${i})'>+ Create</button>
+          </div>`).join('');
+      } catch (e) {
+        list.innerHTML = `<div class="empty"><div class="empty-icon">❌</div><div class="empty-text">${esc(e.message)}</div></div>`;
+      } finally {
+        btn.disabled = false; btn.textContent = '⚡ Auto-Detect';
+      }
+    }
+
+    function createDetectedChannel(match, rowIdx) {
+      const id = 'stremirow-' + slugify(match.name) + '-' + Date.now();
+      const item = { id, type: 'tv', title: match.name, thumbnail: match.logo || '', description: '', sources: match.sources };
+      let ccRow = config.rows.find(r => r.id === 'custom-channels');
+      if (!ccRow) { ccRow = { id: 'custom-channels', name: 'Custom Channels', contentType: 'tv', items: [] }; config.rows.push(ccRow); }
+      ccRow.items.push(item);
+      markDirty();
+      renderRows();
+      renderCustomChannelsPanel();
+      // Remove from auto-detect list
+      const row = document.getElementById('ad-row-' + rowIdx);
+      if (row) { row.style.opacity = '0.3'; row.querySelector('button').textContent = '✓ Created'; row.querySelector('button').disabled = true; }
+      toast(`Created: ${match.name}`, 'success');
+    }
+
+    function deleteCustomChannel(id) {
+      if (!confirm('Delete this custom channel?')) return;
+      for (const row of config.rows) {
+        row.items = (row.items || []).filter(i => i.id !== id);
+      }
+      markDirty();
+      renderCustomChannelsPanel();
+      // Refresh TV grid if open
+      if (document.getElementById('tv-grid')) filterTVChannels();
+    }
+    let ccSources = [];       // [{addonName, addonUrl, channelId, channelName}]
     let ccAllChannels = [];   // channels from selected addon
     let ccEditingId = null;   // id of channel being edited (null = new)
 
@@ -2063,7 +2264,7 @@
         sel.innerHTML = '<option value="">Loading addons…</option>';
         try {
           const d = await fetch('/api/stremio/addons').then(r => r.json());
-          tvAddons = (d.addons || []).filter(a => (a.manifest.types || []).some(t => t === 'tv' || t === 'channel'));
+          tvAddons = (d.addons || []).filter(isTvAddon);
         } catch (e) { tvAddons = []; }
       }
 
@@ -2167,23 +2368,29 @@
       const logo = document.getElementById('cc-logo').value.trim();
       const id = ccEditingId || ('stremirow-' + slugify(name) + '-' + Date.now());
       const item = { id, type: 'tv', title: name, thumbnail: logo, description: '', sources: ccSources };
-      // Find which row to put it in — add to tempRowItems if builder is open, else ask
+
+      // Always persist to the dedicated custom-channels row in config
+      let ccRow = config.rows.find(r => r.id === 'custom-channels');
+      if (!ccRow) {
+        ccRow = { id: 'custom-channels', name: 'Custom Channels', contentType: 'tv', items: [] };
+        config.rows.push(ccRow);
+      }
+      const existingIdx = ccRow.items.findIndex(i => i.id === id);
+      if (existingIdx >= 0) ccRow.items[existingIdx] = item; else ccRow.items.push(item);
+      markDirty();
+      renderRows();
+      renderCustomChannelsPanel();
+
+      // Also add to tempRowItems if the row builder is open on a TV row
       if (document.getElementById('builder-modal').classList.contains('open')) {
         const existing = tempRowItems.findIndex(i => i.id === id);
-        if (existing >= 0) tempRowItems[existing] = item; else tempRowItems.unshift(item);
+        if (existing >= 0) tempRowItems[existing] = item; else tempRowItems.push(item);
         renderRowItems();
-        closeModal('custom-channel-modal');
-        toast('Custom channel saved', 'success');
-      } else {
-        // Save directly to config — find first tv row or create one
-        let row = config.rows.find(r => r.contentType === 'tv');
-        if (!row) { row = { id: 'custom-channels', name: 'Custom Channels', contentType: 'tv', items: [] }; config.rows.push(row); }
-        const existing = row.items.findIndex(i => i.id === id);
-        if (existing >= 0) row.items[existing] = item; else row.items.unshift(item);
-        markDirty(); renderRows();
-        closeModal('custom-channel-modal');
-        toast('Custom channel saved', 'success');
+        filterTVChannels();
       }
+
+      closeModal('custom-channel-modal');
+      toast('Custom channel saved', 'success');
     }
 
     // ─── Sync Stremio

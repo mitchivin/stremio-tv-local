@@ -269,8 +269,12 @@ function toggleActiveRowItem(item) {
 
 function refreshDiscoveryGrids() {
   const type = document.getElementById('row-type').value;
-  if (type === 'movie' || type === 'series') renderMovieGrid();
-  else filterTVChannels();
+  if (type === 'movie' || type === 'series') {
+    // Re-render current results — movieResults already holds the filtered/searched set
+    renderMovieGrid(document.getElementById('load-more-btn') !== null);
+  } else {
+    filterTVChannels();
+  }
 }
 
 function saveActiveRow() {
@@ -1043,7 +1047,7 @@ function renderCCSources() {
     </div>`).join('');
 }
 
-function removeCCSource(i) { ccSources.splice(i, 1); renderCCSources(); renderCCGrid(ccAllChannels); }
+function removeCCSource(i) { ccSources.splice(i, 1); renderCCSources(); filterCCChannels(); }
 
 async function loadCCAddonChannels() {
   const sel = document.getElementById('cc-addon-select');
@@ -1099,7 +1103,7 @@ function toggleCCSource(ch) {
   if (idx >= 0) ccSources.splice(idx, 1);
   else ccSources.push({ addonName: ch.addonName, addonUrl: ch.addonUrl, channelId: ch.id, channelName: ch.name });
   renderCCSources();
-  renderCCGrid(ccAllChannels);
+  filterCCChannels();
 }
 
 function saveCustomChannel() {

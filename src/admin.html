@@ -7,6 +7,7 @@
   <title>Row Factory · Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
   <link rel="stylesheet" href="/admin.css" />
 </head>
 
@@ -15,7 +16,7 @@
 
     <!-- Sidebar -->
     <aside class="sidebar">
-      <div class="logo">
+      <div class="logo" onclick="onLogoClick(event)">
         <div class="logo-icon">▶</div>
         <div>
           <div class="logo-name">StremiRow</div>
@@ -43,6 +44,7 @@
           </div>
           <div style="display: flex; align-items: center; gap: 8px;">
             <div id="save-status" style="font-size: 11px; font-weight: 600; margin-right: 4px;"></div>
+            <button class="btn btn-danger btn-sm" onclick="clearAllRows()">Clear All</button>
             <button class="btn btn-ghost" onclick="openBuilderModal()">+ Add Row</button>
           </div>
         </div>
@@ -92,7 +94,7 @@
             </div>
           </div>
 
-          <div style="margin-top: 32px; padding: 20px; background: var(--surf3); border-radius: var(--r); border: 1px solid var(--border2);">
+          <div id="a1x-section" class="a1x-install-card">
             <div style="font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 6px;">A1X IPTV</div>
             <div style="font-size: 12px; color: var(--soft); margin-bottom: 14px;">Live TV — Sports, Entertainment and News. Install this as a separate addon in Stremio.</div>
             <div style="display: flex; gap: 8px; margin-bottom: 12px;">
@@ -112,8 +114,10 @@
             <div class="ph-desc">Build channels from multiple addon sources.</div>
           </div>
           <div style="display:flex;gap:8px;">
+            <button class="btn btn-danger btn-sm" onclick="deleteSelectedCustomChannels()">🗑 Delete Selected</button>
+            <button class="btn btn-danger btn-sm" onclick="clearAllCustomChannels()">Clear All</button>
             <button class="btn btn-ghost" id="btn-auto-detect" onclick="autoDetectChannels()">⚡ Auto-Detect</button>
-            <button class="btn btn-ghost" onclick="openCustomChannelModal(null)">+ New Channel</button>
+            <button class="btn btn-ghost" onclick="newCustomChannel()">+ New Channel</button>
           </div>
         </div>
         <div class="pb">
@@ -134,146 +138,127 @@
   <!-- ROW BUILDER MODAL -->
   <div class="modal-overlay" id="builder-modal">
     <div class="modal builder">
-      <div class="builder-header">
+      <div class="cc-modal-header">
         <div class="builder-title-wrap">
-          <div class="builder-title-text" id="builder-modal-title">New Row</div>
-          <button class="builder-title-edit-btn" id="builder-title-edit-btn" onclick="startEditingRowTitle()" title="Rename row">Rename</button>
-          <input class="builder-title-input" id="builder-title-input" style="display:none" placeholder="Row name…"
-            onkeydown="if(event.key==='Enter')commitRowTitle(); if(event.key==='Escape')cancelEditRowTitle()" />
-          <button class="builder-title-edit-btn" id="builder-title-confirm-btn" onclick="commitRowTitle()"
-            style="display:none; background:var(--accent-dim); color:var(--accent); border-color:rgba(16,185,129,.3)">Confirm</button>
-          <select class="form-input" id="row-type" onchange="onBuilderTypeChange()"
-            style="width:auto; padding:4px 28px 4px 8px; font-size:11px; font-weight:600;">
-            <option value="movie">Movie</option>
-            <option value="series">Series</option>
-            <option value="tv">TV Channels</option>
-          </select>
-          <span id="row-type-badge"
-            style="display:none; font-size:11px; font-weight:600; padding:3px 8px; border-radius:4px; background:var(--accent-dim); color:var(--accent); border:1px solid rgba(16,185,129,.25);"></span>
+          <span class="cc-modal-title" id="builder-modal-title">New Row</span>
+          <input class="form-input inline-rename-input" id="builder-title-input" style="display:none;"
+            placeholder="Row name…"
+            onkeydown="if(event.key==='Enter')commitInlineRename(); if(event.key==='Escape')cancelInlineRename();"
+            onblur="commitInlineRename()" />
+          <button class="btn btn-primary btn-sm" id="builder-rename-confirm" style="display:none;flex-shrink:0;" tabindex="-1" onmousedown="event.preventDefault()" onclick="commitInlineRename()">✓</button>
         </div>
-        <button class="btn btn-ghost" onclick="closeBuilderModal()">✕ Close</button>
+        <div class="cc-modal-actions">
+          <button class="btn btn-ghost btn-sm" onclick="closeBuilderModal()">Cancel</button>
+          <button class="btn btn-primary btn-sm" id="builder-save-btn" onclick="saveActiveRow()">Save Row</button>
+        </div>
       </div>
-      <div class="builder-body">
-        <div class="builder-config-pane">
-          <div class="form-group" style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
-            <label class="form-label">Row Items <span style="font-weight:400;color:var(--muted)">(drag to reorder)</span></label>
-            <div class="row-edit-list" id="row-items-list"
-              style="flex:1; max-height:none; margin-bottom:16px; min-height:150px;"></div>
+
+      <!-- Setup screen (new rows only) -->
+      <div class="builder-setup" id="builder-setup">
+        <div class="builder-setup-inner">
+          <div class="builder-setup-title">What kind of row?</div>
+          <div class="builder-setup-desc">Give it a name and pick a type to get started.</div>
+          <input class="form-input builder-setup-name" id="builder-setup-name" placeholder="Row name…"
+            onkeydown="if(event.key==='Enter')commitBuilderSetup()" />
+          <div class="builder-type-grid">
+            <button class="builder-type-btn active" data-type="movie" onclick="selectBuilderType('movie')">
+              <span class="material-icons">movie</span>
+              <span>Movies</span>
+            </button>
+            <button class="builder-type-btn" data-type="series" onclick="selectBuilderType('series')">
+              <span class="material-icons">tv</span>
+              <span>Series</span>
+            </button>
+            <button class="builder-type-btn" data-type="tv" onclick="selectBuilderType('tv')">
+              <span class="material-icons">live_tv</span>
+              <span>TV Channels</span>
+            </button>
           </div>
-          <button class="btn btn-primary" style="width:100%; justify-content:center; padding:10px"
-            onclick="saveActiveRow()">Save Row</button>
+          <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px 0;" onclick="commitBuilderSetup()">Continue</button>
+        </div>
+      </div>
+
+      <div class="cc-modal-body" id="builder-editor" style="display:none;">
+
+        <!-- Row items zone -->
+        <div class="cc-sources-zone">
+          <div id="row-items-list" class="builder-items-drop"></div>
         </div>
 
-        <div class="builder-discovery-pane" id="builder-left-pane">
-          <div id="discovery-movies" style="display:none; flex-direction:column; height:100%;">
-            <div class="ph">
-              <div class="ph-left">
-                <div class="ph-title" id="movie-pane-title">Movies & Series</div>
-                <div class="ph-desc">Search CineMeta to add items to this row.</div>
-              </div>
-            </div>
-            <div class="pb">
-              <div class="toolbar">
-                <div class="search-wrap">
-                  <span class="search-icon">🔍</span>
-                  <input class="search-input" id="movie-search" type="search" placeholder="Search movies & series…" oninput="onMovieSearch()" />
-                </div>
-                <select class="form-input" id="movie-catalog" style="width: auto; padding: 7px 30px 7px 10px; cursor: pointer" onchange="onCatalogChange()"></select>
-                <select class="form-input" id="movie-genre" style="width: auto; padding: 7px 30px 7px 10px; cursor: pointer" onchange="onGenreChange()"></select>
-              </div>
-              <div class="poster-grid" id="movie-grid">
-                <div class="empty" style="grid-column:1/-1">
-                  <div class="empty-icon">🎬</div>
-                  <div class="empty-text">Select a type to browse.</div>
-                </div>
+        <!-- Movie/Series Toolbar -->
+        <div class="cc-toolbar" id="builder-toolbar-movie">
+          <div class="search-wrap">
+            <span class="search-icon" style="font-size:13px;">🔍</span>
+            <input class="search-input" id="movie-search" type="search" placeholder="Search…" oninput="onMovieSearch()" />
+          </div>
+          <select class="form-input cc-select" id="movie-catalog" onchange="onCatalogChange()"></select>
+          <select class="form-input cc-select" id="movie-genre" onchange="onGenreChange()"></select>
+        </div>
+
+        <!-- TV Toolbar (populated dynamically) -->
+        <div class="cc-toolbar" id="builder-toolbar-tv" style="display:none;"></div>
+
+        <!-- Browse grid -->
+        <div class="cc-channel-scroll" id="builder-left-pane">
+          <div id="discovery-movies" style="display:none;">
+            <div class="poster-grid" id="movie-grid">
+              <div class="empty" style="grid-column:1/-1">
+                <div class="empty-icon">🎬</div>
+                <div class="empty-text">Select a type to browse.</div>
               </div>
             </div>
           </div>
-
-          <div id="discovery-tv" style="display:none; flex-direction:column; height:100%;">
-            <div class="ph">
-              <div class="ph-left">
-                <div class="ph-title">TV Channels</div>
-                <div class="ph-desc">Browse live TV Channels from your addons.</div>
-              </div>
-            </div>
-            <div class="pb" id="tv-body" style="display:flex; flex-direction:column; height:100%;"></div>
+          <div id="discovery-tv" style="display:none;">
+            <div id="tv-body"></div>
           </div>
         </div>
+
       </div>
     </div>
   </div>
 
   <!-- CUSTOM CHANNEL MODAL -->
   <div class="modal-overlay" id="custom-channel-modal">
-    <div class="modal builder">
-      <div class="builder-header">
-        <div class="builder-title-wrap">
-          <div class="builder-title-text">Custom Channel</div>
+    <div class="modal builder cc-modal">
+      <div class="cc-modal-header">
+        <span class="cc-modal-title" id="cc-modal-title">Edit Sources</span>
+        <div class="cc-modal-actions">
+          <button class="btn btn-ghost btn-sm" onclick="closeCCModal()">Cancel</button>
+          <button class="btn btn-primary btn-sm" onclick="saveCustomChannel()">Save</button>
         </div>
-        <button class="btn btn-ghost" onclick="closeModal('custom-channel-modal')">✕ Close</button>
       </div>
-      <div class="builder-body">
-        <!-- Left: channel config -->
-        <div class="builder-config-pane" style="width:280px;">
-          <div class="form-group">
-            <label class="form-label">Channel Name</label>
-            <input class="form-input" id="cc-name" placeholder="e.g. SKY Sport 1 NZ" />
+
+      <div class="cc-modal-body">
+
+        <!-- Sources zone -->
+        <div class="cc-sources-zone">
+          <div class="cc-zone-label">
+            Sources
+            <span class="cc-zone-hint" id="cc-sources-hint">click channels below to add</span>
           </div>
-          <div class="form-group">
-            <label class="form-label">Logo</label>
-            <div style="display:flex;align-items:flex-start;gap:12px;margin-top:4px;">
-              <div style="position:relative;width:80px;height:80px;border-radius:8px;background:var(--surf3);border:2px dashed var(--border2);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:border-color .15s;"
-                id="cc-logo-dropzone"
-                onclick="document.getElementById('cc-logo-file').click()"
-                ondragover="event.preventDefault();this.style.borderColor='var(--accent)'"
-                ondragleave="this.style.borderColor='var(--border2)'"
-                ondrop="onLogoDrop(event)">
-                <img id="cc-logo-preview" src="" style="width:100%;height:100%;object-fit:contain;display:none;position:absolute;inset:0;" />
-                <span id="cc-logo-ph" style="font-size:28px;pointer-events:none;">📺</span>
-              </div>
-              <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
-                <button class="btn btn-ghost btn-sm" onclick="document.getElementById('cc-logo-file').click()" type="button">Upload Image</button>
-                <button class="btn btn-ghost btn-sm" id="cc-logo-clear-btn" onclick="clearLogoPreview()" type="button" style="display:none;">✕ Remove</button>
-                <div style="display:flex;gap:4px;">
-                  <button class="btn btn-sm" id="logo-mode-fit" onclick="setLogoMode('fit')" type="button" style="flex:1;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(16,185,129,.3);">Fit</button>
-                  <button class="btn btn-ghost btn-sm" id="logo-mode-fill" onclick="setLogoMode('fill')" type="button" style="flex:1;">Fill</button>
-                </div>
-                <div style="font-size:10px;color:var(--muted);line-height:1.4;">PNG, JPG, SVG</div>
-              </div>
-            </div>
-            <input type="file" id="cc-logo-file" accept="image/*" style="display:none;" onchange="onLogoFileChange(event)" />
-            <input type="hidden" id="cc-logo" />
-          </div>
-          <div class="form-group" style="margin-top:8px;">
-            <label class="form-label">Sources <span style="font-weight:400;color:var(--muted)">(addons that provide this channel)</span></label>
-            <div id="cc-sources-list" style="display:flex;flex-direction:column;gap:5px;margin-top:4px;min-height:40px;"></div>
-          </div>
-          <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px;margin-top:auto;" onclick="saveCustomChannel()">Save Channel</button>
+          <div id="cc-sources-list" class="cc-sources-drop"></div>
         </div>
-        <!-- Right: browse addons -->
-        <div class="builder-discovery-pane" style="display:flex;flex-direction:column;height:100%;">
-          <div class="ph">
-            <div class="ph-left">
-              <div class="ph-title">Pick Sources</div>
-              <div class="ph-desc">Browse each addon and click a channel to add it as a source.</div>
-            </div>
+
+        <!-- Toolbar -->
+        <div class="cc-toolbar">
+          <div class="search-wrap">
+            <span class="search-icon" style="font-size:13px;">🔍</span>
+            <input class="search-input" id="cc-search" type="search" placeholder="Search channels…" oninput="filterCCChannels()" />
           </div>
-          <div style="padding:12px 18px 0;flex-shrink:0;display:flex;gap:8px;align-items:center;">
-            <select class="form-input" id="cc-addon-select" style="width:auto;flex:1;" onchange="loadCCAddonChannels()">
-              <option value="">Select an addon…</option>
-            </select>
-            <div class="search-wrap" style="flex:1;position:relative;">
-              <span class="search-icon">🔍</span>
-              <input class="search-input" id="cc-search" type="search" placeholder="Search channels…" oninput="filterCCChannels()" />
-            </div>
-          </div>
-          <div class="pb" style="flex:1;overflow-y:auto;padding-top:12px;">
-            <div class="poster-grid" id="cc-grid">
-              <div class="empty" style="grid-column:1/-1"><div class="empty-icon">📡</div><div class="empty-text">Select an addon above.</div></div>
-            </div>
-          </div>
+          <select class="form-input cc-select" id="cc-addon-select" onchange="onCCAddonChange()">
+            <option value="">All Addons</option>
+          </select>
+          <select class="form-input cc-select" id="cc-genre-select" onchange="onCCGenreChange()">
+            <option value="">All Genres</option>
+          </select>
         </div>
+
+        <!-- Channel grid -->
+        <div class="cc-channel-scroll">
+          <div class="cc-status" id="cc-load-status"></div>
+          <div id="cc-grid"></div>
+        </div>
+
       </div>
     </div>
   </div>

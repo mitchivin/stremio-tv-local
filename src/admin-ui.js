@@ -7,7 +7,7 @@ let config = { addon: { id: 'com.stremirow.custom', version: '1.0.0', name: 'Str
 let editingRowIdx = -1, tempRowItems = [];
 let dirty = false;
 let movieType = 'movie', movieResults = [], movieTimer = null;
-let tvAddons = [], tvChannels = [];
+let tvAddons = [];
 const EXCLUDED_ADDON_IDS = new Set(['com.stremirow.custom']);
 function isTvAddon(a) {
   if (EXCLUDED_ADDON_IDS.has(a.manifest.id)) return false;
@@ -32,6 +32,23 @@ function toast(msg, type = 'success') {
 }
 function markDirty() {
   saveAll();
+}
+
+// ─── Logo Easter Egg
+let logoClicks = [];
+function onLogoClick(event) {
+  if (!event.shiftKey) return;
+  const now = Date.now();
+  logoClicks.push(now);
+  logoClicks = logoClicks.filter(t => now - t < 10000);
+  if (logoClicks.length >= 7) {
+    const a1xSection = document.getElementById('a1x-section');
+    if (a1xSection) {
+      a1xSection.style.display = 'block';
+      toast('A1X IPTV unlocked!', 'success');
+    }
+    logoClicks = [];
+  }
 }
 
 // ─── Nav
@@ -104,39 +121,58 @@ function drop(e, i) {
   markDirty(); renderRows();
 }
 
-function startEditingRowTitle() {
+function setBuilderTitle(name, type) {
+  const TYPE_LABELS = { movie: 'Movies', series: 'Series', tv: 'TV Channels' };
   const titleEl = document.getElementById('builder-modal-title');
-  const editBtn = document.getElementById('builder-title-edit-btn');
-  const confirmBtn = document.getElementById('builder-title-confirm-btn');
+  if (!titleEl) return;
+  const label = TYPE_LABELS[type] || type;
+  titleEl.innerHTML = `<span class="builder-type-tag">${esc(label)}</span> <span class="builder-title-name" onclick="startInlineRename()" title="Click to rename">${esc(name)}</span>`;
+  // Hide input/confirm (they are siblings, not children — safe from innerHTML wipe)
   const input = document.getElementById('builder-title-input');
-  input.value = titleEl.textContent;
-  titleEl.style.display = 'none';
-  editBtn.style.display = 'none';
-  input.style.display = '';
-  confirmBtn.style.display = '';
-  input.focus(); input.select();
+  const confirmBtn = document.getElementById('builder-rename-confirm');
+  if (input) input.style.display = 'none';
+  if (confirmBtn) confirmBtn.style.display = 'none';
 }
-function commitRowTitle() {
-  const input = document.getElementById('builder-title-input');
+
+function startInlineRename() {
   const titleEl = document.getElementById('builder-modal-title');
-  const editBtn = document.getElementById('builder-title-edit-btn');
-  const confirmBtn = document.getElementById('builder-title-confirm-btn');
-  const newName = input.value.trim();
-  if (newName) titleEl.textContent = newName;
-  input.style.display = 'none';
-  confirmBtn.style.display = 'none';
-  titleEl.style.display = '';
-  editBtn.style.display = '';
+  const input = document.getElementById('builder-title-input');
+  const confirmBtn = document.getElementById('builder-rename-confirm');
+  if (!input) return;
+  const nameEl = titleEl.querySelector('.builder-title-name');
+  input.value = nameEl ? nameEl.textContent : '';
+  if (nameEl) nameEl.style.display = 'none';
+  input.style.display = 'inline-block';
+  if (confirmBtn) confirmBtn.style.display = 'inline-block';
+  input.focus();
+  input.select();
 }
-function cancelEditRowTitle() {
-  const input = document.getElementById('builder-title-input');
+
+function commitInlineRename() {
   const titleEl = document.getElementById('builder-modal-title');
-  const editBtn = document.getElementById('builder-title-edit-btn');
-  const confirmBtn = document.getElementById('builder-title-confirm-btn');
+  const input = document.getElementById('builder-title-input');
+  const confirmBtn = document.getElementById('builder-rename-confirm');
+  if (!input || input.style.display === 'none') return;
+  const name = input.value.trim();
+  if (name) {
+    setBuilderTitle(name, _builderType);
+  } else {
+    input.style.display = 'none';
+    if (confirmBtn) confirmBtn.style.display = 'none';
+    const nameEl = titleEl.querySelector('.builder-title-name');
+    if (nameEl) nameEl.style.display = '';
+  }
+}
+
+function cancelInlineRename() {
+  const titleEl = document.getElementById('builder-modal-title');
+  const input = document.getElementById('builder-title-input');
+  const confirmBtn = document.getElementById('builder-rename-confirm');
+  if (!input) return;
   input.style.display = 'none';
-  confirmBtn.style.display = 'none';
-  titleEl.style.display = '';
-  editBtn.style.display = '';
+  if (confirmBtn) confirmBtn.style.display = 'none';
+  const nameEl = titleEl.querySelector('.builder-title-name');
+  if (nameEl) nameEl.style.display = '';
 }
 
 function openBuilderModal(idx = -1) {
@@ -145,33 +181,57 @@ function openBuilderModal(idx = -1) {
   const row = isNew ? { id: '', name: '', items: [], contentType: 'movie' } : config.rows[idx];
   let rowType = row.contentType || 'movie';
 
-  if (rowType === 'tv' && (!sidebarAuthStatus || !sidebarAuthStatus.loggedIn)) {
-    toast('Sign in to view TV channels', 'error');
-  }
-
-  const typeSelect = document.getElementById('row-type');
-  const typeBadge = document.getElementById('row-type-badge');
-  const TYPE_LABELS = { movie: 'Movie', series: 'Series', tv: 'TV Channels' };
+  const TYPE_LABELS = { movie: 'Movies', series: 'Series', tv: 'TV Channels' };
+  const setup = document.getElementById('builder-setup');
+  const editor = document.getElementById('builder-editor');
+  const saveBtn = document.getElementById('builder-save-btn');
+  const titleEl = document.getElementById('builder-modal-title');
 
   if (isNew) {
-    typeSelect.style.display = '';
-    typeBadge.style.display = 'none';
+    setup.style.display = '';
+    editor.style.display = 'none';
+    saveBtn.style.display = 'none';
+    titleEl.textContent = 'New Row';
+    document.getElementById('builder-setup-name').value = '';
+    selectBuilderType('movie');
+    openModal('builder-modal');
+    setTimeout(() => document.getElementById('builder-setup-name').focus(), 100);
   } else {
-    typeSelect.style.display = 'none';
-    typeBadge.textContent = TYPE_LABELS[rowType] || rowType;
-    typeBadge.style.display = '';
+    setup.style.display = 'none';
+    editor.style.display = '';
+    saveBtn.style.display = '';
+    _builderType = rowType;
+    setBuilderTitle(row.name || 'Edit Row', rowType);
+    tempRowItems = [...(row.items || [])];
+    renderRowItems();
+    onBuilderTypeChange();
+    openModal('builder-modal');
   }
+}
 
-  document.getElementById('builder-modal-title').textContent = row.name || 'New Row';
-  document.getElementById('builder-modal-title').style.display = '';
-  document.getElementById('builder-title-edit-btn').style.display = '';
-  document.getElementById('builder-title-input').style.display = 'none';
-  document.getElementById('builder-title-confirm-btn').style.display = 'none';
-  typeSelect.value = rowType;
-  tempRowItems = [...(row.items || [])];
+let _builderType = 'movie';
+
+function selectBuilderType(type) {
+  _builderType = type;
+  document.querySelectorAll('.builder-type-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.type === type);
+  });
+}
+
+function commitBuilderSetup() {
+  const name = document.getElementById('builder-setup-name').value.trim();
+  if (!name) { document.getElementById('builder-setup-name').focus(); return; }
+
+  const TYPE_LABELS = { movie: 'Movies', series: 'Series', tv: 'TV Channels' };
+  setBuilderTitle(name, _builderType);
+  document.getElementById('builder-save-btn').style.display = '';
+
+  document.getElementById('builder-setup').style.display = 'none';
+  document.getElementById('builder-editor').style.display = '';
+
+  tempRowItems = [];
   renderRowItems();
   onBuilderTypeChange();
-  openModal('builder-modal');
 }
 
 function closeBuilderModal() {
@@ -179,55 +239,53 @@ function closeBuilderModal() {
 }
 
 function onBuilderTypeChange() {
-  const typeEl = document.getElementById('row-type');
-  const type = typeEl.value;
-
-  if (tempRowItems.length > 0) {
-    const row = editingRowIdx >= 0 ? config.rows[editingRowIdx] : null;
-    const oldType = row ? (row.contentType || 'movie') : 'movie';
-    if (type !== oldType) {
-      if (!confirm(`Changing the row type to "${type}" will clear all existing items in this row. Are you sure?`)) {
-        typeEl.value = oldType;
-        return;
-      }
-      tempRowItems = [];
-      renderRowItems();
-      toast('Row items cleared for new type', 'success');
-    }
-  }
+  const type = _builderType;
 
   const dMovies = document.getElementById('discovery-movies');
   const dTv = document.getElementById('discovery-tv');
-  const movieTitle = document.getElementById('movie-pane-title');
+  const movieToolbar = document.getElementById('builder-toolbar-movie');
+  const tvToolbar = document.getElementById('builder-toolbar-tv');
   const movieSearch = document.getElementById('movie-search');
 
   if (type === 'movie' || type === 'series') {
-    dMovies.style.display = 'flex';
+    dMovies.style.display = '';
     dTv.style.display = 'none';
-    if (movieTitle && movieSearch) {
-      movieTitle.textContent = type === 'movie' ? 'Movies' : 'Series';
-      movieSearch.placeholder = type === 'movie' ? 'Search movies...' : 'Search series...';
-    }
+    if (movieToolbar) movieToolbar.style.display = 'flex';
+    if (tvToolbar) tvToolbar.style.display = 'none';
+    if (movieSearch) movieSearch.placeholder = type === 'movie' ? 'Search movies…' : 'Search series…';
     setMovieType(type);
   } else {
-    dTv.style.display = 'flex';
+    dTv.style.display = '';
     dMovies.style.display = 'none';
+    if (movieToolbar) movieToolbar.style.display = 'none';
+    if (tvToolbar) tvToolbar.style.display = 'flex';
     updateTVPanel();
   }
 }
 
 function renderRowItems() {
   const el = document.getElementById('row-items-list');
-  if (!tempRowItems.length) { el.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:8px;text-align:center">No items yet. Add from Movies or TV Channels.</div>'; return; }
-  el.innerHTML = tempRowItems.map((s, i) => `
-  <div class="rei" draggable="true" ondragstart="onDragStartRowItem(event, ${i})" ondragover="onDragOverRowItem(event)" ondrop="onDropRowItem(event, ${i})">
-    <div class="rei-thumb">${s.thumbnail ? `<img src="${esc(s.thumbnail)}" onerror="this.style.display='none'">` : '📺'}</div>
-    <div class="rei-info"><div class="rei-title">${esc(s.title)}</div></div>
-    <div class="drag-handle" style="cursor:grab; padding:0 6px; color:var(--muted); font-size:14px">☰</div>
-    <div class="rei-actions">
-      <button class="btn btn-danger btn-icon" onclick="removeItem(${i})">×</button>
-    </div>
-  </div>`).join('');
+  if (!tempRowItems.length) {
+    el.innerHTML = '<span style="font-size:11px;color:var(--muted);padding:4px 2px;">Click items below to add them</span>';
+    return;
+  }
+  const isTv = _builderType === 'tv';
+  const ph = isTv ? '📺' : '🎬';
+  el.innerHTML = tempRowItems.map((s, i) => {
+    const thumb = s.thumbnail
+      ? `<img src="${esc(s.thumbnail)}" onerror="this.style.display='none'">`
+      : `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:16px;">${ph}</div>`;
+    return `<div class="row-item-card"
+      draggable="true"
+      ondragstart="onDragStartRowItem(event,${i})"
+      ondragover="onDragOverRowItem(event)"
+      ondrop="onDropRowItem(event,${i})"
+      title="${esc(s.title)}">
+      <div class="row-item-thumb${isTv ? ' tv' : ''}">${thumb}</div>
+      <div class="row-item-title">${esc(s.title)}</div>
+      <button class="row-item-remove" onclick="removeItem(${i})" title="Remove">×</button>
+    </div>`;
+  }).join('');
 }
 function removeItem(i) { tempRowItems.splice(i, 1); renderRowItems(); refreshDiscoveryGrids(); }
 
@@ -240,7 +298,8 @@ function onDragStartRowItem(e, i) {
 function onDragOverRowItem(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
 function onDropRowItem(e, targetIdx) {
   e.preventDefault();
-  e.target.closest('.rei').style.opacity = '1';
+  const chip = e.target.closest('.cc-source-chip');
+  if (chip) chip.style.opacity = '1';
   if (dragRowItemIdx === null || dragRowItemIdx === targetIdx) return;
   const item = tempRowItems.splice(dragRowItemIdx, 1)[0];
   tempRowItems.splice(targetIdx, 0, item);
@@ -250,7 +309,7 @@ function onDropRowItem(e, targetIdx) {
 
 function toggleActiveRowItem(item) {
   if (editingRowIdx < -1) return;
-  const type = document.getElementById('row-type').value;
+  const type = _builderType;
   const itemType = item.type === 'movie' || item.type === 'series' ? item.type : 'tv';
   if (type === 'tv' && itemType !== 'tv') return toast('This row only accepts TV Channels', 'error');
   if (type !== 'tv' && itemType === 'tv') return toast('This row only accepts Movies or Series', 'error');
@@ -268,7 +327,7 @@ function toggleActiveRowItem(item) {
 }
 
 function refreshDiscoveryGrids() {
-  const type = document.getElementById('row-type').value;
+  const type = _builderType;
   if (type === 'movie' || type === 'series') {
     // Re-render current results — movieResults already holds the filtered/searched set
     renderMovieGrid(document.getElementById('load-more-btn') !== null);
@@ -278,10 +337,12 @@ function refreshDiscoveryGrids() {
 }
 
 function saveActiveRow() {
-  commitRowTitle();
-  const name = document.getElementById('builder-modal-title').textContent.trim();
-  if (!name || name === 'New Row') { toast('Please set a row name first (click ✏ to edit)', 'error'); startEditingRowTitle(); return; }
-  const contentType = document.getElementById('row-type').value;
+  commitInlineRename();
+  const titleEl = document.getElementById('builder-modal-title');
+  const nameEl = titleEl ? titleEl.querySelector('.builder-title-name') : null;
+  const name = nameEl ? nameEl.textContent.trim() : '';
+  if (!name) { toast('Please enter a row name', 'error'); startInlineRename(); return; }
+  const contentType = _builderType;
   const rowId = editingRowIdx >= 0 ? config.rows[editingRowIdx].id : (slugify(name) || 'row-' + Date.now());
   const row = { id: rowId, name, contentType, items: tempRowItems };
   if (editingRowIdx >= 0) config.rows[editingRowIdx] = row; else config.rows.push(row);
@@ -290,6 +351,14 @@ function saveActiveRow() {
 function deleteRow(i) {
   if (!confirm(`Delete row "${config.rows[i].name}"?`)) return;
   config.rows.splice(i, 1); markDirty(); renderRows();
+}
+
+function clearAllRows() {
+  if (!confirm('Delete all rows? This cannot be undone.')) return;
+  config.rows = [];
+  markDirty();
+  renderRows();
+  toast('All rows cleared', 'success');
 }
 
 // ─── Movies & Series (CineMeta)
@@ -419,7 +488,6 @@ function renderMovieGrid(hasMore = false) {
     <div class="pbody">
       <div class="ptitle">${esc(item.title)}</div>
       ${item.year ? `<div class="pmeta">${item.year}</div>` : ''}
-      ${inActiveRow ? '<div class="pmeta green">✓ Added</div>' : ''}
     </div>
   </div>`;
   }).join('');
@@ -435,175 +503,187 @@ function renderMovieGrid(hasMore = false) {
 async function updateTVPanel() {
   const body = document.getElementById('tv-body');
   if (!body) return;
-  body.innerHTML = `<div class="empty" style="margin: auto; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-    <div class="empty-icon">⏳</div>
-    <div class="empty-text" style="font-size: 16px;">Loading IPTV Channels...</div>
-  </div>`;
-  const auth = await fetch('/api/stremio/status').then(r => r.json()).catch(() => null);
-  if (!auth || !auth.loggedIn) {
-    body.innerHTML = `<div class="empty" style="margin: auto; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-      <div class="empty-icon">🔒</div>
-      <div class="empty-text" style="font-size: 16px; margin-bottom: 12px;">Sign in to browse TV Channels</div>
-      <button class="btn btn-primary" onclick="openModal('stremio-login-modal')">Connect Stremio Account</button>
-    </div>`;
+
+  // Render toolbar + grid shell immediately so UI appears right away
+  const toolbar = document.getElementById('builder-toolbar-tv');
+  if (toolbar) {
+    toolbar.style.display = 'flex';
+    toolbar.innerHTML = `
+      <div class="search-wrap">
+        <span class="search-icon" style="font-size:13px;">🔍</span>
+        <input class="search-input" id="tv-search" type="search" placeholder="Search channels…" oninput="applyTVFilter()"/>
+      </div>
+      <select class="form-input cc-select" id="tv-addon-select" onchange="onTVAddonChange()">
+        <option value="">All Addons</option>
+      </select>
+      <select class="form-input cc-select" id="tv-genre-select" onchange="applyTVFilter()" disabled>
+        <option value="">All Genres</option>
+      </select>`;
+  }
+  body.innerHTML = '<div class="cc-status" id="tv-load-status"></div><div id="tv-grid"></div>';
+  setCCStatus('Checking account…');
+
+  // If channels already cached, populate immediately
+  if (ccAllChannels.length && tvAddons.length) {
+    populateTVAddonDropdown();
+    applyTVFilter();
+    setCCStatus(`${ccAllChannels.length} channels from ${tvAddons.length} addon${tvAddons.length !== 1 ? 's' : ''}`);
     return;
   }
-  await loadTVAddons(auth, body);
-}
 
-async function loadTVAddons(auth, body) {
-  try {
-    const resp = await fetch('/api/stremio/addons');
-    if (resp.status === 401) {
-      body.innerHTML = '<div class="empty"><div class="empty-icon">🔒</div><div class="empty-text">Session expired. Please <a href="#" onclick="openModal(\'stremio-login-modal\');initSidebarAuth();return false;">sign in again</a>.</div></div>';
-      await initSidebarAuth();
+  const auth = await fetch('/api/stremio/status').then(r => r.json()).catch(() => null);
+  if (!auth || !auth.loggedIn) {
+    body.innerHTML = `<div class="empty" style="padding:40px 0;text-align:center;">
+      <div class="empty-icon">🔒</div>
+      <div class="empty-text" style="margin-bottom:12px;">Sign in to browse TV Channels</div>
+      <button class="btn btn-primary" onclick="openModal('stremio-login-modal')">Connect Stremio Account</button>
+    </div>`;
+    if (toolbar) toolbar.style.display = 'none';
+    return;
+  }
+
+  if (!tvAddons.length) {
+    setCCStatus('Loading addons…');
+    try {
+      const resp = await fetch('/api/stremio/addons');
+      if (resp.status === 401) {
+        body.innerHTML = '<div class="empty"><div class="empty-icon">🔒</div><div class="empty-text">Session expired. Please sign in again.</div></div>';
+        if (toolbar) toolbar.style.display = 'none';
+        return;
+      }
+      const d = await resp.json();
+      tvAddons = (d.addons || []).filter(isTvAddon);
+    } catch (e) {
+      setCCStatus('');
+      body.innerHTML = `<div class="empty"><div class="empty-icon">❌</div><div class="empty-text">${esc(e.message)}</div></div>`;
       return;
     }
-    const d = await resp.json();
-    tvAddons = (d.addons || []).filter(isTvAddon);
-    if (!tvAddons.length) { body.innerHTML = '<div class="empty"><div class="empty-icon">📡</div><div class="empty-text">No IPTV or TV addons found in your Stremio account.</div></div>'; return; }
+  }
 
-    body.innerHTML = `
-    <div class="toolbar">
-      <div class="search-wrap"><span class="search-icon">🔍</span><input class="search-input" id="tv-search" type="search" placeholder="Search channels…" oninput="filterTVChannels()"/></div>
-      <select class="form-input" id="tv-genre" style="width: auto; padding: 7px 30px 7px 10px; cursor: pointer" onchange="onTvGenreChange()">
-        <option value="all">All Channels</option>
-      </select>
-    </div>
-    <div class="poster-grid" id="tv-grid"><div class="empty" style="grid-column:1/-1"><div class="empty-icon">⏳</div><div class="empty-text">Loading channels…</div></div></div>`;
+  if (!tvAddons.length) {
+    body.innerHTML = '<div class="empty"><div class="empty-icon">📡</div><div class="empty-text">No IPTV or TV addons found.</div></div>';
+    if (toolbar) toolbar.style.display = 'none';
+    return;
+  }
 
-    // Populate genre dropdown from all addons
-    const genreSelect = document.getElementById('tv-genre');
-    if (genreSelect) {
-      const genres = new Set();
-      tvAddons.forEach(addon => {
-        (addon.manifest.catalogs || []).forEach(cat => {
-          if (cat.type === 'tv' || cat.type === 'channel') {
-            (cat.extra || []).forEach(e => {
-              if (e.name === 'genre' && e.options) {
-                e.options.forEach(g => {
-                  const gl = g.toLowerCase();
-                  const hidden = ['all tv channels', 'all tv', 'all', 'epl', 'other channels', 'regional channels', 'traditional channels', 'ca tv'];
-                  const cities = ['sydney', 'melbourne', 'brisbane', 'adelaide', 'perth', 'canberra', 'hobart', 'darwin'];
-                  if (!hidden.includes(gl) && !cities.some(c => gl.startsWith(c))) genres.add(g);
-                });
-              }
-            });
-          }
-        });
-      });
+  populateTVAddonDropdown();
 
-      let h = '<option value="all">All Channels</option><option value="__custom__">Custom Channels</option>';
-      Array.from(genres).sort((a, b) => {
-        const al = a.toLowerCase(), bl = b.toLowerCase();
-        const getRank = (s, isEx) => {
-          if (isEx) return 5;
-          if (s.includes('sport')) return 1;
-          if (s.includes('tv')) return 2;
-          if (s.includes('radio')) return 3;
-          return 4;
-        };
-        const aRank = getRank(al, al.startsWith('extra'));
-        const bRank = getRank(bl, bl.startsWith('extra'));
-        if (aRank !== bRank) return aRank - bRank;
-        return a.localeCompare(b);
-      }).forEach(g => { h += `<option value="${esc(g)}">${esc(g)}</option>`; });
-      genreSelect.innerHTML = h;
-      genreSelect.value = 'all';
-    }
-
-    fetchTvChannels();
-  } catch (e) { body.innerHTML = `<div class="empty"><div class="empty-icon">❌</div><div class="empty-text">${esc(e.message)}</div></div>`; }
+  if (!ccAllChannels.length) {
+    await loadAllCCChannels();
+  }
+  applyTVFilter();
 }
 
-function onTvGenreChange() {
-  const genre = document.getElementById('tv-genre')?.value;
-  if (genre === '__custom__') {
-    tvChannels = getAllCustomChannels();
-    renderTVGrid(tvChannels);
-  } else {
-    fetchTvChannels();
+function populateTVAddonDropdown() {
+  const addonSel = document.getElementById('tv-addon-select');
+  if (!addonSel) return;
+  addonSel.innerHTML = '<option value="">All Addons</option>';
+  tvAddons.forEach((a, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = a.manifest.name;
+    addonSel.appendChild(opt);
+  });
+  if (getAllCustomChannels().length) {
+    const opt = document.createElement('option');
+    opt.value = '__custom__';
+    opt.textContent = 'Custom Channels';
+    addonSel.appendChild(opt);
   }
 }
 
-async function fetchTvChannels() {
-  const grid = document.getElementById('tv-grid');
-  const genre = document.getElementById('tv-genre')?.value || 'all';
-  if (!grid) return;
-  grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">⏳</div><div class="empty-text">Loading items from all addons…</div></div>';
+function onTVAddonChange() {
+  const sel = document.getElementById('tv-addon-select');
+  const val = sel ? sel.value : '';
+  const genreSel = document.getElementById('tv-genre-select');
 
-  try {
-    const urlsToFetch = [];
-    tvAddons.forEach(addon => {
-      const cats = (addon.manifest.catalogs || []).filter(c => c.type === 'tv' || c.type === 'channel');
-      const baseUrl = addon.transportUrl.replace('/manifest.json', '');
-      if (genre === 'all') {
-        cats.forEach(cat => {
-          urlsToFetch.push(`${baseUrl}/catalog/${cat.type}/${cat.id}.json`);
-          const genreExtra = (cat.extra || []).find(e => e.name === 'genre');
-          if (genreExtra && genreExtra.options) {
-            genreExtra.options.forEach(g => urlsToFetch.push(`${baseUrl}/catalog/${cat.type}/${cat.id}/genre=${encodeURIComponent(g)}.json`));
-          }
-        });
-      } else {
-        cats.forEach(cat => {
-          const genreExtra = (cat.extra || []).find(e => e.name === 'genre');
-          if (genreExtra && genreExtra.options && genreExtra.options.includes(genre)) {
-            urlsToFetch.push(`${baseUrl}/catalog/${cat.type}/${cat.id}/genre=${encodeURIComponent(genre)}.json`);
-          }
-        });
-      }
-    });
+  if (val === '__custom__') {
+    if (genreSel) { genreSel.innerHTML = '<option value="">All Genres</option>'; genreSel.disabled = true; }
+    applyTVFilter();
+    return;
+  }
 
-    if (!urlsToFetch.length && genre !== 'all') {
-      tvAddons.forEach(addon => {
-        const cats = (addon.manifest.catalogs || []).filter(c => c.type === 'tv' || c.type === 'channel');
-        const baseUrl = addon.transportUrl.replace('/manifest.json', '');
-        cats.forEach(cat => urlsToFetch.push(`${baseUrl}/catalog/${cat.type}/${cat.id}.json`));
+  const addonIdx = parseInt(val);
+  if (!isNaN(addonIdx) && tvAddons[addonIdx]) {
+    const addon = tvAddons[addonIdx];
+    const genres = new Set();
+    (addon.manifest.catalogs || [])
+      .filter(c => c.type === 'tv' || c.type === 'channel')
+      .forEach(cat => {
+        const genreExtra = (cat.extra || []).find(e => e.name === 'genre');
+        if (genreExtra && genreExtra.options) {
+          genreExtra.options.filter(g => !isCCFilteredGenre(g)).forEach(g => genres.add(g));
+        }
       });
+    if (genreSel) {
+      genreSel.innerHTML = '<option value="">All Genres</option>' +
+        Array.from(genres).sort().map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+      genreSel.disabled = false;
     }
-
-    if (!urlsToFetch.length) { grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📭</div><div class="empty-text">No channels found.</div></div>'; return; }
-
-    const results = await Promise.all(urlsToFetch.map(url =>
-      fetch(`/api/stremio/proxy-catalog?url=${encodeURIComponent(url)}`).then(r => r.json()).catch(() => ({ metas: [] }))
-    ));
-
-    const allMetas = [];
-    const seen = new Set();
-    results.forEach(d => {
-      if (d && d.metas) {
-        d.metas.forEach(m => {
-          if (m && m.id && !seen.has(m.id)) { seen.add(m.id); allMetas.push(m); }
-        });
-      }
-    });
-
-    tvChannels = allMetas.map(m => ({ id: m.id, type: 'tv', title: m.name, thumbnail: m.poster || m.logo || m.background || '', description: m.description || '' }));
-    renderTVGrid(tvChannels);
-  } catch (e) { if (grid) grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">❌</div><div class="empty-text">${esc(e.message)}</div></div>`; }
+  } else if (genreSel) {
+    genreSel.innerHTML = '<option value="">All Genres</option>';
+    genreSel.disabled = true;
+  }
+  applyTVFilter();
 }
 
-function filterTVChannels() {
+function applyTVFilter() {
+  const sel = document.getElementById('tv-addon-select');
+  const val = sel ? sel.value : '';
+  const genre = document.getElementById('tv-genre-select')?.value || '';
   const q = (document.getElementById('tv-search')?.value || '').toLowerCase();
-  renderTVGrid(q ? tvChannels.filter(c => c.title.toLowerCase().includes(q)) : tvChannels);
+
+  // Custom channels mode
+  if (val === '__custom__') {
+    let channels = getAllCustomChannels().map(ch => ({
+      id: ch.id, name: ch.title, logo: ch.thumbnail || '', addonName: 'Custom', addonIdx: -1, genres: []
+    }));
+    if (q) channels = channels.filter(c => c.name.toLowerCase().includes(q));
+    channels.sort((a, b) => a.name.localeCompare(b.name));
+    renderTVGrid(channels);
+    return;
+  }
+
+  const addonIdx = parseInt(val);
+  let filtered = ccAllChannels;
+  if (!isNaN(addonIdx)) filtered = filtered.filter(c => c.addonIdx === addonIdx);
+  if (genre) {
+    filtered = filtered.filter(c => c.genres.includes(genre));
+  } else {
+    filtered = filtered.filter(c => c.genres.some(g => !isCCFilteredGenre(g)));
+  }
+  if (q) filtered = filtered.filter(c => c.name.toLowerCase().includes(q));
+  filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+  renderTVGrid(filtered);
 }
 
 function renderTVGrid(channels) {
   const grid = document.getElementById('tv-grid');
   if (!grid) return;
-  if (!channels.length) { grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📭</div><div class="empty-text">No channels found.</div></div>'; return; }
-  grid.innerHTML = channels.map(item => {
-    const inActiveRow = tempRowItems.some(i => i.id === item.id);
-    return `<div class="poster-card tv${inActiveRow ? ' in-row' : ''}" onclick='toggleActiveRowItem(${safeJson(item)})'>
-    ${item.thumbnail ? `<img class="pimg" src="${esc(item.thumbnail)}" loading="lazy" onerror="this.className='pimg-ph';this.textContent='📺'">` : '<div class="pimg-ph">📺</div>'}
-    <div class="pbody">
-      <div class="ptitle">${esc(item.title)}</div>
-      ${inActiveRow ? '<div class="pmeta green">✓ Added</div>' : ''}
-    </div>
-  </div>`;
-  }).join('');
+  if (!channels.length) {
+    grid.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">No channels found.</div></div>';
+    return;
+  }
+  grid.innerHTML = `<div class="poster-grid">${channels.map((ch, i) => {
+    const inRow = tempRowItems.some(x => x.id === ch.id);
+    return `<div class="poster-card tv${inRow ? ' in-row' : ''}" data-tv-idx="${i}">
+      ${ch.logo ? `<img class="pimg" src="${esc(ch.logo)}" loading="lazy" onerror="this.className='pimg-ph';this.textContent='📺'">` : '<div class="pimg-ph">📺</div>'}
+      <div class="pbody">
+        <div class="ptitle">${esc(ch.name)}</div>
+        <div class="pmeta">${esc(ch.addonName)}</div>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+
+  grid.querySelectorAll('.poster-card').forEach(el => {
+    el.addEventListener('click', () => {
+      const ch = channels[parseInt(el.dataset.tvIdx)];
+      toggleActiveRowItem({ id: ch.id, type: 'tv', title: ch.name, thumbnail: ch.logo || '', description: '' });
+    });
+  });
 }
+
+function filterTVChannels() { applyTVFilter(); }
 
 // ─── Sidebar Auth
 let sidebarAuthStatus = null;
@@ -612,15 +692,14 @@ async function initSidebarAuth() {
   const navBtn = document.getElementById('nav-account');
   const modalContent = document.getElementById('account-modal-content');
 
-  const tvOption = document.querySelector('#row-type option[value="tv"]');
+  const tvOption = document.querySelector('.builder-type-btn[data-type="tv"]');
   if (tvOption) {
     if (sidebarAuthStatus && sidebarAuthStatus.loggedIn) {
       tvOption.disabled = false;
-      tvOption.textContent = 'TV Channels';
+      tvOption.title = '';
       if (navBtn) navBtn.innerHTML = '<span class="nav-icon">👤</span> Account <span style="margin-left:auto; width:6px; height:6px; background:var(--accent); border-radius:50%; box-shadow:0 0 5px var(--accent)"></span>';
     } else {
-      tvOption.disabled = true;
-      tvOption.textContent = 'TV Channels (Sign in)';
+      tvOption.title = 'Sign in to use TV Channels';
       if (navBtn) navBtn.innerHTML = '<span class="nav-icon">👤</span> Account';
     }
   }
@@ -741,6 +820,155 @@ function getAllCustomChannels() {
   return channels;
 }
 
+// ─── Inline channel editing state (keyed by channel id) — kept for logo processing helpers
+
+function inlineUpdateName(id, val) {
+  // Update in config immediately so save picks it up
+  for (const row of config.rows) {
+    const item = (row.items || []).find(i => i.id === id);
+    if (item) { item.title = val; break; }
+  }
+}
+
+function startInlineName(id) {
+  const safeId = id.replace(/[^a-z0-9-]/gi, '-');
+  document.getElementById(`cc-title-${safeId}`).style.display = 'none';
+  document.getElementById(`cc-rename-btn-${safeId}`).style.display = 'none';
+  const input = document.getElementById(`cc-input-${safeId}`);
+  input.style.display = '';
+  input.focus(); input.select();
+}
+
+function commitInlineName(id) {
+  const safeId = id.replace(/[^a-z0-9-]/gi, '-');
+  const input = document.getElementById(`cc-input-${safeId}`);
+  if (!input || input.style.display === 'none') return;
+  const val = input.value.trim() || 'Custom Channel';
+  inlineUpdateName(id, val);
+  document.getElementById(`cc-title-${safeId}`).textContent = val;
+  document.getElementById(`cc-title-${safeId}`).style.display = '';
+  document.getElementById(`cc-rename-btn-${safeId}`).style.display = '';
+  input.style.display = 'none';
+  inlineSaveChannel(id);
+}
+
+function cancelInlineName(id) {
+  const safeId = id.replace(/[^a-z0-9-]/gi, '-');
+  const input = document.getElementById(`cc-input-${safeId}`);
+  if (!input) return;
+  document.getElementById(`cc-title-${safeId}`).style.display = '';
+  document.getElementById(`cc-rename-btn-${safeId}`).style.display = '';
+  input.style.display = 'none';
+}
+
+function cycleLogoMode(id) {
+  const safeId = id.replace(/[^a-z0-9-]/gi, '-');
+  const modeInput = document.getElementById(`cc-inline-mode-${safeId}`);
+  const current = modeInput ? modeInput.value : 'fit';
+  inlineSetLogoMode(id, current === 'fit' ? 'fill' : 'fit');
+  const fileInput = document.getElementById(`cc-inline-file-${safeId}`);
+  if (fileInput && fileInput.files[0]) inlineProcessLogo(fileInput.files[0], id);
+}
+
+function inlineSaveChannel(id) {
+  const safeId = id.replace(/[^a-z0-9-]/gi, '-');
+  const logoInput = document.getElementById(`cc-inline-logo-${safeId}`);
+  const modeInput = document.getElementById(`cc-inline-mode-${safeId}`);
+  for (const row of config.rows) {
+    const item = (row.items || []).find(i => i.id === id);
+    if (item) {
+      if (logoInput) item.thumbnail = logoInput.value;
+      if (modeInput) item._logoMode = modeInput.value;
+      break;
+    }
+  }
+  markDirty();
+  renderRows();
+}
+
+function inlineOnLogoDrop(e, id) {
+  e.preventDefault();
+  const safeId = id.replace(/[^a-z0-9-]/gi, '-');
+  document.getElementById(`cc-logo-wrap-${safeId}`)?.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) inlineProcessLogo(file, id);
+}
+
+function inlineOnLogoFile(e, id) {
+  const file = e.target.files[0];
+  if (file) inlineProcessLogo(file, id);
+}
+
+function inlineSetLogoMode(id, mode) {
+  const safeId = id.replace(/[^a-z0-9-]/gi, '-');
+  const modeInput = document.getElementById(`cc-inline-mode-${safeId}`);
+  if (modeInput) modeInput.value = mode;
+  const bar = document.getElementById(`cc-mode-badge-${safeId}`);
+  if (bar) bar.querySelectorAll('span').forEach(s => s.className = s.textContent.toLowerCase() === mode ? 'cc-mode-active' : '');
+  // Store mode on item
+  for (const row of config.rows) {
+    const item = (row.items || []).find(i => i.id === id);
+    if (item) { item._logoMode = mode; break; }
+  }
+  // Re-bake from raw source if available
+  const rawInput = document.getElementById(`cc-inline-raw-${safeId}`);
+  const raw = rawInput ? rawInput.value : null;
+  if (raw) {
+    applyLogoMode(raw, mode, id);
+  }
+}
+
+function applyLogoMode(rawDataUrl, mode, id) {
+  const safeId = id.replace(/[^a-z0-9-]/gi, '-');
+  const img = new Image();
+  img.onload = function() {
+    const SIZE = 400;
+    const canvas = document.createElement('canvas');
+    canvas.width = SIZE; canvas.height = SIZE;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#141414';
+    ctx.fillRect(0, 0, SIZE, SIZE);
+    if (mode === 'fill') {
+      const scale = Math.max(SIZE / img.width, SIZE / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      ctx.drawImage(img, (SIZE - w) / 2, (SIZE - h) / 2, w, h);
+    } else {
+      const PADDING = 40, maxDim = SIZE - PADDING * 2;
+      const scale = Math.min(maxDim / img.width, maxDim / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      ctx.drawImage(img, (SIZE - w) / 2, (SIZE - h) / 2, w, h);
+    }
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    const logoInput = document.getElementById(`cc-inline-logo-${safeId}`);
+    if (logoInput) logoInput.value = dataUrl;
+    const preview = document.getElementById(`cc-inline-preview-${safeId}`);
+    if (preview) { preview.src = dataUrl; preview.style.display = ''; }
+    const ph = document.getElementById(`cc-inline-ph-${safeId}`);
+    if (ph) ph.style.display = 'none';
+    inlineSaveChannel(id);
+  };
+  img.src = rawDataUrl;
+}
+
+function inlineProcessLogo(file, id) {
+  const safeId = id.replace(/[^a-z0-9-]/gi, '-');
+  const modeInput = document.getElementById(`cc-inline-mode-${safeId}`);
+  const mode = modeInput ? modeInput.value : 'fit';
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const raw = e.target.result;
+    // Store raw on item for re-processing after mode toggle or page reload
+    for (const row of config.rows) {
+      const item = (row.items || []).find(i => i.id === id);
+      if (item) { item._rawLogo = raw; break; }
+    }
+    const rawInput = document.getElementById(`cc-inline-raw-${safeId}`);
+    if (rawInput) rawInput.value = raw;
+    applyLogoMode(raw, mode, id);
+  };
+  reader.readAsDataURL(file);
+}
+
 function renderCustomChannelsPanel() {
   const el = document.getElementById('custom-channels-list');
   const label = document.getElementById('saved-channels-label');
@@ -751,20 +979,49 @@ function renderCustomChannelsPanel() {
     el.innerHTML = '<div class="empty"><div class="empty-icon">📺</div><div class="empty-text">No custom channels yet. Click Auto-Detect or + New Channel.</div></div>';
     return;
   }
-  el.innerHTML = channels.map(ch => `
-    <div style="background:var(--surf2);border:1px solid var(--border2);border-radius:var(--r);padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">
-      <div style="width:44px;height:44px;border-radius:6px;background:var(--surf3);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
-        ${ch.thumbnail ? `<img src="${esc(ch.thumbnail)}" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'">` : '<span style="font-size:20px;">📺</span>'}
-      </div>
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:700;color:var(--text);">${esc(ch.title)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${(ch.sources||[]).length} source${(ch.sources||[]).length !== 1 ? 's' : ''}: ${(ch.sources||[]).map(s=>esc(s.addonName)).join(', ')}</div>
-      </div>
-      <div style="display:flex;gap:6px;">
-        <button class="btn btn-ghost btn-sm" onclick='openCustomChannelModal(${safeJson(ch)})'>✏ Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteCustomChannel('${esc(ch.id)}')">🗑</button>
-      </div>
-    </div>`).join('');
+  el.innerHTML = `<div class="cc-saved-grid">${channels.map(ch => {
+    const safeId = ch.id.replace(/[^a-z0-9-]/gi, '-');
+    const srcNames = (ch.sources||[]).map(s=>esc(s.addonName)).join(', ');
+    const mode = ch._logoMode || 'fit';
+    return `
+      <div class="cc-saved-card" id="cc-card-${safeId}" data-id="${esc(ch.id)}" onclick="toggleCCCardSelect(event,'${esc(ch.id)}')">
+
+        <!-- Logo -->
+        <div class="cc-saved-logo" id="cc-logo-wrap-${safeId}"
+          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="event.stopPropagation();inlineOnLogoDrop(event,'${esc(ch.id)}')">
+          <img id="cc-inline-preview-${safeId}" src="${esc(ch.thumbnail || '')}" style="width:100%;height:100%;object-fit:${mode === 'fill' ? 'cover' : 'contain'};position:absolute;inset:0;${ch.thumbnail ? '' : 'display:none;'}" />
+          <span id="cc-inline-ph-${safeId}" style="font-size:32px;${ch.thumbnail ? 'display:none;' : ''}">📺</span>
+          <button class="cc-upload-btn" onclick="event.stopPropagation();document.getElementById('cc-inline-file-${safeId}').click()" title="Upload logo"><span class="material-icons">upload</span></button>
+          <div class="cc-logo-mode-bar" id="cc-mode-badge-${safeId}">
+            <span class="${mode === 'fit' ? 'cc-mode-active' : ''}" onclick="event.stopPropagation();inlineSetLogoMode('${esc(ch.id)}','fit')">Fit</span>
+            <span class="${mode === 'fill' ? 'cc-mode-active' : ''}" onclick="event.stopPropagation();inlineSetLogoMode('${esc(ch.id)}','fill')">Fill</span>
+          </div>
+        </div>
+        <input type="file" id="cc-inline-file-${safeId}" accept="image/*" style="display:none;" onchange="inlineOnLogoFile(event,'${esc(ch.id)}')" />
+        <input type="hidden" id="cc-inline-logo-${safeId}" value="${esc(ch.thumbnail || '')}" />
+        <input type="hidden" id="cc-inline-mode-${safeId}" value="${mode}" />
+        <input type="hidden" id="cc-inline-raw-${safeId}" value="${esc(ch._rawLogo || '')}" />
+
+        <!-- Name row -->
+        <div class="cc-saved-name-row" onclick="event.stopPropagation()">
+          <span class="cc-saved-title" id="cc-title-${safeId}">${esc(ch.title)}</span>
+          <input class="form-input cc-saved-input" id="cc-input-${safeId}" value="${esc(ch.title)}" style="display:none;"
+            oninput="inlineUpdateName('${esc(ch.id)}',this.value)"
+            onkeydown="if(event.key==='Enter')commitInlineName('${esc(ch.id)}');if(event.key==='Escape')cancelInlineName('${esc(ch.id)}')"
+            onblur="commitInlineName('${esc(ch.id)}')" />
+          <button class="cc-rename-btn" id="cc-rename-btn-${safeId}" onclick="startInlineName('${esc(ch.id)}')">Rename</button>
+        </div>
+
+        <!-- Footer: sources + edit -->
+        <div class="cc-saved-footer" onclick="event.stopPropagation()">
+          <div class="cc-saved-src" title="${srcNames}">${srcNames || 'No sources'}</div>
+          <button class="btn btn-ghost btn-sm cc-sources-btn" onclick="openCustomChannelModalById('${esc(ch.id)}')">Edit Sources</button>
+        </div>
+
+      </div>`;
+  }).join('')}</div>`;
 }
 
 // ─── Auto-Detect
@@ -899,241 +1156,444 @@ function deleteCustomChannel(id) {
   if (document.getElementById('tv-grid')) filterTVChannels();
 }
 
+function clearAllCustomChannels() {
+  const count = getAllCustomChannels().length;
+  if (!count) return toast('No custom channels to clear', 'success');
+  if (!confirm(`Delete all ${count} custom channel${count !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+  for (const row of config.rows) {
+    row.items = (row.items || []).filter(i => !i.id?.startsWith('stremirow-'));
+  }
+  config.rows = config.rows.filter(r => r.id !== 'custom-channels' || (r.items || []).length > 0);
+  markDirty();
+  renderRows();
+  renderCustomChannelsPanel();
+  if (document.getElementById('tv-grid')) filterTVChannels();
+  toast('All custom channels cleared', 'success');
+}
+
+function deleteSelectedCustomChannels() {
+  const selected = [...document.querySelectorAll('.cc-saved-card.selected')];
+  if (!selected.length) return toast('No channels selected', 'error');
+  if (!confirm(`Delete ${selected.length} selected channel${selected.length !== 1 ? 's' : ''}?`)) return;
+  const ids = new Set(selected.map(card => card.dataset.id));
+  for (const row of config.rows) {
+    row.items = (row.items || []).filter(i => !ids.has(i.id));
+  }
+  config.rows = config.rows.filter(r => r.id !== 'custom-channels' || (r.items || []).length > 0);
+  markDirty();
+  renderRows();
+  renderCustomChannelsPanel();
+  if (document.getElementById('tv-grid')) filterTVChannels();
+  toast(`Deleted ${ids.size} channel${ids.size !== 1 ? 's' : ''}`, 'success');
+}
+
+function toggleCCCardSelect(e, id) {
+  const safeId = id.replace(/[^a-z0-9-]/gi, '-');
+  const card = document.getElementById(`cc-card-${safeId}`);
+  if (!card) return;
+  card.classList.toggle('selected');
+  card.dataset.id = id;
+}
+
+// ─── CC channel filter — exclude non-TV content
+const CC_FILTER_GENRES = new Set([
+  'radio', 'music', 'podcast', 'podcasts', 'audio', 'soundtracks',
+  'music channels', 'radio stations', 'music radio',
+  'au iptv radio', 'nz radio',
+  'extra: ca | dazn',
+  'extra: uk | dazn',
+  'extra: uk | spfl',
+  'extra: uk | tnt sports',
+  'extra: uk | sky sports',
+  'extra: int | dirtvision',
+  'all tv channels', 'all tv', 'all',
+  'traditional channels', 'other channels', 'regional channels', 'ca tv',
+  'extra: int | f1 tv',
+  'extra: nz | sky sport',
+  'extra: uk | epl',
+  'extra: int | rugby events',
+  'extra: ppv | events',
+  'world sports',
+]);
+const CC_FILTER_PATTERNS = [
+  /\bradio\b/i,
+  /\bfm\b/i,
+  /\b\d{2,3}[\.\s]?\d?\s*fm\b/i,
+  /\bam\b/i,
+  /\bpodcast/i,
+  /\baudio\b/i,
+  /\bmusic\b/i,
+  /\bsoundtrack/i,
+  /\bstation\b/i,
+  /tvg-name=/i,
+  /tvg-id=/i,
+  /tvg-logo=/i,
+  /group-title=/i,
+];
+function isCCFilteredGenre(g) {
+  const lower = g.toLowerCase().trim();
+  if (CC_FILTER_GENRES.has(lower)) return true;
+  // Filter "X TV" for Australian cities except Sydney
+  if (/^(melbourne|perth|hobart|brisbane|adelaide|darwin|canberra)\s+tv$/i.test(g.trim())) return true;
+  return false;
+}
+function isCCFiltered(name) {
+  if (!name) return true;
+  return CC_FILTER_PATTERNS.some(p => p.test(name));
+}
+
 // ─── Custom Channel Modal
 let ccSources = [];
 let ccAllChannels = [];
 let ccEditingId = null;
-let logoMode = 'fit';
+let ccIsNew = false;
+
+function newCustomChannel() {
+  const id = 'stremirow-new-' + Date.now();
+  const item = { id, type: 'tv', title: 'New Channel', thumbnail: '', description: '', sources: [] };
+  let ccRow = config.rows.find(r => r.id === 'custom-channels');
+  if (!ccRow) {
+    ccRow = { id: 'custom-channels', name: 'Custom Channels', contentType: 'tv', items: [] };
+    config.rows.push(ccRow);
+  }
+  ccRow.items.push(item);
+  renderCustomChannelsPanel();
+  renderRows();
+  ccIsNew = true;
+  openCustomChannelModalById(id);
+}
+
+async function openCustomChannelModalById(id) {
+  const item = config.rows.flatMap(r => r.items || []).find(i => i.id === id);
+  if (item) await openCustomChannelModal(item);
+}
+
+function closeCCModal() {
+  if (ccIsNew && ccEditingId) {
+    // No sources added — remove the placeholder channel
+    for (const row of config.rows) {
+      row.items = (row.items || []).filter(i => i.id !== ccEditingId);
+    }
+    config.rows = config.rows.filter(r => r.id !== 'custom-channels' || (r.items || []).length > 0);
+    renderCustomChannelsPanel();
+    renderRows();
+  }
+  ccIsNew = false;
+  closeModal('custom-channel-modal');
+}
 
 async function openCustomChannelModal(existingItem) {
-  ccSources = existingItem ? JSON.parse(JSON.stringify(existingItem.sources || [])) : [];
-  ccEditingId = existingItem ? existingItem.id : null;
-  document.getElementById('cc-name').value = existingItem ? existingItem.title : '';
-  document.getElementById('cc-logo').value = existingItem ? (existingItem.thumbnail || '') : '';
-  document.getElementById('cc-logo-file').value = '';
-  logoMode = 'fit';
-  setLogoMode('fit');
-  updateCCPreview();
+  if (!existingItem) return;
+  ccSources = JSON.parse(JSON.stringify(existingItem.sources || []));
+  ccEditingId = existingItem.id;
+  if (!ccIsNew) ccIsNew = false; // preserve flag set by newCustomChannel
+  ccAllChannels = [];
+  const titleEl = document.getElementById('cc-modal-title');
+  if (titleEl) titleEl.textContent = existingItem.title || 'Edit Sources';
   renderCCSources();
-  document.getElementById('cc-grid').innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📡</div><div class="empty-text">Select an addon above.</div></div>';
   document.getElementById('cc-search').value = '';
   openModal('custom-channel-modal');
 
+  // Fetch addons if needed
   if (!tvAddons.length) {
-    const sel = document.getElementById('cc-addon-select');
-    sel.innerHTML = '<option value="">Loading addons…</option>';
+    setCCStatus('Loading addons…');
     try {
       const d = await fetch('/api/stremio/addons').then(r => r.json());
       tvAddons = (d.addons || []).filter(isTvAddon);
     } catch (e) { tvAddons = []; }
   }
 
+  // Populate dropdown
   const sel = document.getElementById('cc-addon-select');
-  sel.innerHTML = '<option value="">Select an addon…</option>';
+  sel.innerHTML = '<option value="">All Addons</option>';
   tvAddons.forEach((a, i) => {
     const opt = document.createElement('option');
     opt.value = i;
     opt.textContent = a.manifest.name;
     sel.appendChild(opt);
   });
-}
 
-function updateCCPreview() {
-  const url = document.getElementById('cc-logo').value.trim();
-  const img = document.getElementById('cc-logo-preview');
-  const ph = document.getElementById('cc-logo-ph');
-  const clearBtn = document.getElementById('cc-logo-clear-btn');
-  const dropzone = document.getElementById('cc-logo-dropzone');
-  if (url) {
-    img.src = url; img.style.display = ''; ph.style.display = 'none';
-    if (clearBtn) clearBtn.style.display = '';
-    if (dropzone) dropzone.style.borderStyle = 'solid';
-  } else {
-    img.style.display = 'none'; ph.style.display = '';
-    if (clearBtn) clearBtn.style.display = 'none';
-    if (dropzone) dropzone.style.borderStyle = 'dashed';
+  // Genre dropdown starts disabled (no addon selected)
+  const genreSel = document.getElementById('cc-genre-select');
+  if (genreSel) {
+    genreSel.innerHTML = '<option value="">All Genres</option>';
+    genreSel.disabled = true;
   }
+
+  // Load all addons progressively
+  await loadAllCCChannels();
 }
 
-function clearLogoPreview() {
-  document.getElementById('cc-logo').value = '';
-  document.getElementById('cc-logo-file').value = '';
-  updateCCPreview();
+function setCCStatus(msg) {
+  const el = document.getElementById('cc-load-status');
+  if (el) { el.textContent = msg; el.style.display = msg ? '' : 'none'; }
+  // Mirror to TV panel status if open
+  const tvEl = document.getElementById('tv-load-status');
+  if (tvEl) { tvEl.textContent = msg; tvEl.style.display = msg ? '' : 'none'; }
 }
 
-function onLogoDrop(e) {
-  e.preventDefault();
-  document.getElementById('cc-logo-dropzone').style.borderColor = 'var(--border2)';
-  const file = e.dataTransfer.files[0];
-  if (file && file.type.startsWith('image/')) processLogoFile(file);
-}
-
-function onLogoFileChange(e) {
-  const file = e.target.files[0];
-  if (file) processLogoFile(file);
-}
-
-function setLogoMode(mode) {
-  logoMode = mode;
-  const fitBtn = document.getElementById('logo-mode-fit');
-  const fillBtn = document.getElementById('logo-mode-fill');
-  if (fitBtn) {
-    fitBtn.className = 'btn btn-sm' + (mode === 'fit' ? '' : ' btn-ghost');
-    fitBtn.style.cssText = mode === 'fit' ? 'flex:1;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(16,185,129,.3);' : 'flex:1;';
+async function loadAllCCChannels() {
+  if (!tvAddons.length) {
+    renderCCGrid([]);
+    setCCStatus('');
+    return;
   }
-  if (fillBtn) {
-    fillBtn.className = 'btn btn-sm' + (mode === 'fill' ? '' : ' btn-ghost');
-    fillBtn.style.cssText = mode === 'fill' ? 'flex:1;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(16,185,129,.3);' : 'flex:1;';
-  }
-  // Re-process if a file is already loaded
-  const file = document.getElementById('cc-logo-file').files[0];
-  if (file) processLogoFile(file);
-}
 
-function processLogoFile(file) {
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const img = new Image();
-    img.onload = function() {
-      // Stremio renders poster with object-fit:cover (fills/crops the square)
-      // Fit mode: bake padding into image so logo isn't cropped
-      // Fill mode: crop/scale image to fill the full square
-      const SIZE = 400;
-      const canvas = document.createElement('canvas');
-      canvas.width = SIZE; canvas.height = SIZE;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#141414';
-      ctx.fillRect(0, 0, SIZE, SIZE);
-      if (logoMode === 'fill') {
-        const scale = Math.max(SIZE / img.width, SIZE / img.height);
-        const w = img.width * scale, h = img.height * scale;
-        const x = (SIZE - w) / 2, y = (SIZE - h) / 2;
-        ctx.drawImage(img, x, y, w, h);
+  ccAllChannels = [];
+  renderCCGrid([]);
+  setCCStatus(`Loading 0 / ${tvAddons.length} addons…`);
+
+  let completed = 0;
+
+  await Promise.all(tvAddons.map(async (addon, addonIdx) => {
+    const baseUrl = addon.transportUrl.replace('/manifest.json', '');
+    const cats = (addon.manifest.catalogs || []).filter(c => c.type === 'tv' || c.type === 'channel');
+    // Build {url, genre} pairs so we can tag each channel with its genre
+    const urlPairs = [];
+    cats.forEach(cat => {
+      const genreExtra = (cat.extra || []).find(e => e.name === 'genre');
+      if (genreExtra && genreExtra.options && genreExtra.options.length) {
+        genreExtra.options
+          .filter(g => !isCCFilteredGenre(g))
+          .forEach(g => urlPairs.push({
+            url: `${baseUrl}/catalog/${cat.type}/${cat.id}/genre=${encodeURIComponent(g)}.json`,
+            genre: g
+          }));
       } else {
-        const PADDING = 40;
-        const maxDim = SIZE - PADDING * 2;
-        const scale = Math.min(maxDim / img.width, maxDim / img.height);
-        const w = img.width * scale, h = img.height * scale;
-        const x = (SIZE - w) / 2, y = (SIZE - h) / 2;
-        ctx.drawImage(img, x, y, w, h);
+        urlPairs.push({ url: `${baseUrl}/catalog/${cat.type}/${cat.id}.json`, genre: '' });
       }
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-      document.getElementById('cc-logo').value = dataUrl;
-      updateCCPreview();
-    };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
+    });
+
+    const results = await Promise.all(
+      urlPairs.map(p => fetch(`/api/stremio/proxy-catalog?url=${encodeURIComponent(p.url)}`).then(r => r.json()).catch(() => ({ metas: [] })))
+    );
+
+    const seen = new Set(ccAllChannels.map(c => c.id + '|' + c.addonUrl + '|' + c.genre));
+    results.forEach((d, i) => {
+      const genre = urlPairs[i].genre;
+      (d.metas || []).forEach(m => {
+        const key = m.id + '|' + baseUrl + '|' + genre;
+        if (m && m.id && !seen.has(key) && !isCCFiltered(m.name)) {
+          seen.add(key);
+          // Also track all genres this channel appears under (for filtering)
+          const existing = ccAllChannels.find(c => c.id === m.id && c.addonUrl === baseUrl);
+          if (existing) {
+            existing.genres.push(genre);
+          } else {
+            ccAllChannels.push({ id: m.id, name: m.name, logo: m.poster || m.logo || '', addonName: addon.manifest.name, addonUrl: baseUrl, addonIdx, genre, genres: [genre] });
+          }
+        }
+      });
+    });
+
+    completed++;
+    setCCStatus(`Loading ${completed} / ${tvAddons.length} addons… (${ccAllChannels.length} channels)`);
+
+    // Re-render progressively, respecting current dropdown + search filter
+    applyCCFilter();
+    if (document.getElementById('tv-grid')) applyTVFilter();
+  }));
+
+  setCCStatus(`${ccAllChannels.length} channels from ${tvAddons.length} addon${tvAddons.length !== 1 ? 's' : ''}`);
 }
+
+function applyCCFilter() {
+  const sel = document.getElementById('cc-addon-select');
+  const addonIdx = sel ? parseInt(sel.value) : NaN;
+  const genre = document.getElementById('cc-genre-select')?.value || '';
+  const q = (document.getElementById('cc-search')?.value || '').toLowerCase();
+  let filtered = ccAllChannels;
+  if (!isNaN(addonIdx)) filtered = filtered.filter(c => c.addonIdx === addonIdx);
+  if (genre) {
+    filtered = filtered.filter(c => c.genres.includes(genre));
+  } else {
+    filtered = filtered.filter(c => c.genres.some(g => !isCCFilteredGenre(g)));
+  }
+  if (q) filtered = filtered.filter(c => c.name.toLowerCase().includes(q));
+  filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+  renderCCGrid(filtered);
+}
+
+// ─── CC drag state
+let ccDragSrcIdx = null;   // index being dragged within sources
 
 function renderCCSources() {
   const el = document.getElementById('cc-sources-list');
-  if (!ccSources.length) { el.innerHTML = '<div style="font-size:11px;color:var(--muted);">No sources yet. Browse addons on the right.</div>'; return; }
-  el.innerHTML = ccSources.map((s, i) => `
-    <div class="rei" style="flex-direction:column;align-items:stretch;gap:5px;">
-      <div style="display:flex;align-items:center;gap:9px;">
-        <div class="rei-info">
-          <div class="rei-title">${esc(s.channelName)}</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:1px;">${esc(s.addonName)}</div>
-        </div>
-        <div class="rei-actions">
-          <button class="btn btn-danger btn-icon" onclick="removeCCSource(${i})">×</button>
-        </div>
+  const hint = document.getElementById('cc-sources-hint');
+  if (!ccSources.length) {
+    el.innerHTML = '<span style="font-size:11px;color:var(--muted);padding:4px 2px;">Click channels below to add sources</span>';
+    if (hint) hint.style.display = '';
+    el.style.borderColor = 'var(--border2)';
+    return;
+  }
+  if (hint) hint.style.display = 'none';
+  el.style.borderColor = 'var(--border2)';
+  el.innerHTML = ccSources.map((s, i) => {
+    const priority = i === 0 ? 'Primary' : `Backup ${i}`;
+    const isPrimary = i === 0;
+    return `<div class="cc-source-chip"
+      draggable="true"
+      ondragstart="onCCChipDragStart(event,${i})"
+      ondragover="onCCChipDragOver(event,${i})"
+      ondrop="onCCChipDrop(event,${i})"
+      ondragend="onCCChipDragEnd()"
+      title="Drag to reorder">
+      <span class="cc-chip-drag">⠿</span>
+      <div class="cc-chip-body">
+        <span class="cc-chip-priority${isPrimary ? ' primary' : ''}">${priority}</span>
+        <span class="cc-chip-name">${esc(s.addonName)}</span>
       </div>
-      <div style="display:flex;gap:5px;">
-        <input class="form-input" style="font-size:11px;padding:4px 7px;flex:1;" placeholder="Addon label (e.g. A1X)" value="${esc(s.label || '')}" oninput="ccSources[${i}].label=this.value" title="Left column in Stremio streams" />
-        <input class="form-input" style="font-size:11px;padding:4px 7px;flex:1;" placeholder="Stream title (e.g. Fox League)" value="${esc(s.streamTitle || '')}" oninput="ccSources[${i}].streamTitle=this.value" title="Right column in Stremio streams" />
-      </div>
-    </div>`).join('');
+      <button class="cc-chip-remove" onclick="removeCCSource(${i})" title="Remove">×</button>
+    </div>`;
+  }).join('');
+}
+
+// Chip drag — reorder within sources
+function onCCChipDragStart(e, i) {
+  ccDragSrcIdx = i;
+  ccDragChannel = null;
+  e.dataTransfer.effectAllowed = 'move';
+  e.currentTarget.style.opacity = '0.4';
+}
+function onCCChipDragOver(e, i) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+}
+function onCCChipDrop(e, targetIdx) {
+  e.preventDefault(); e.stopPropagation();
+  if (ccDragSrcIdx === null || ccDragSrcIdx === targetIdx) { onCCChipDragEnd(); return; }
+  const moved = ccSources.splice(ccDragSrcIdx, 1)[0];
+  ccSources.splice(targetIdx, 0, moved);
+  ccDragSrcIdx = null;
+  renderCCSources();
+  renderCCGrid(ccAllChannels.length ? ccAllChannels : []);
+}
+function onCCChipDragEnd() {
+  ccDragSrcIdx = null;
+  renderCCSources();
 }
 
 function removeCCSource(i) { ccSources.splice(i, 1); renderCCSources(); filterCCChannels(); }
 
-async function loadCCAddonChannels() {
-  const sel = document.getElementById('cc-addon-select');
-  const idx = parseInt(sel.value);
-  const grid = document.getElementById('cc-grid');
-  if (isNaN(idx)) { grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📡</div><div class="empty-text">Select an addon above.</div></div>'; return; }
-  const addon = tvAddons[idx];
-  grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">⏳</div><div class="empty-text">Loading…</div></div>';
-  const baseUrl = addon.transportUrl.replace('/manifest.json', '');
-  const cats = (addon.manifest.catalogs || []).filter(c => c.type === 'tv' || c.type === 'channel');
-  const urls = [];
-  cats.forEach(cat => {
-    urls.push(`${baseUrl}/catalog/${cat.type}/${cat.id}.json`);
-    const genreExtra = (cat.extra || []).find(e => e.name === 'genre');
-    if (genreExtra && genreExtra.options) {
-      genreExtra.options.forEach(g => urls.push(`${baseUrl}/catalog/${cat.type}/${cat.id}/genre=${encodeURIComponent(g)}.json`));
-    }
-  });
-  try {
-    const results = await Promise.all(urls.map(u => fetch(`/api/stremio/proxy-catalog?url=${encodeURIComponent(u)}`).then(r => r.json()).catch(() => ({ metas: [] }))));
-    const seen = new Set();
-    ccAllChannels = [];
-    results.forEach(d => (d.metas || []).forEach(m => {
-      if (m && m.id && !seen.has(m.id)) { seen.add(m.id); ccAllChannels.push({ id: m.id, name: m.name, logo: m.poster || m.logo || '', addonName: addon.manifest.name, addonUrl: baseUrl }); }
-    }));
-    document.getElementById('cc-search').value = '';
-    renderCCGrid(ccAllChannels);
-  } catch (e) { grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">❌</div><div class="empty-text">${esc(e.message)}</div></div>`; }
-}
-
-function filterCCChannels() {
-  const q = document.getElementById('cc-search').value.toLowerCase();
-  renderCCGrid(q ? ccAllChannels.filter(c => c.name.toLowerCase().includes(q)) : ccAllChannels);
-}
-
 function renderCCGrid(channels) {
   const grid = document.getElementById('cc-grid');
-  if (!channels.length) { grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📭</div><div class="empty-text">No channels found.</div></div>'; return; }
-  grid.innerHTML = channels.map(ch => {
+  if (!channels.length) {
+    grid.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">No channels found.</div></div>';
+    return;
+  }
+  grid.innerHTML = `<div class="poster-grid">${channels.map((ch, i) => {
     const isSource = ccSources.some(s => s.channelId === ch.id && s.addonUrl === ch.addonUrl);
-    return `<div class="poster-card tv${isSource ? ' in-row' : ''}" onclick='toggleCCSource(${safeJson(ch)})'>
+    return `<div class="poster-card tv${isSource ? ' in-row' : ''}" data-ch-idx="${i}">
       ${ch.logo ? `<img class="pimg" src="${esc(ch.logo)}" loading="lazy" onerror="this.className='pimg-ph';this.textContent='📺'">` : '<div class="pimg-ph">📺</div>'}
       <div class="pbody">
         <div class="ptitle">${esc(ch.name)}</div>
-        ${isSource ? '<div class="pmeta green">✓ Source</div>' : ''}
+        <div class="pmeta">${esc(ch.addonName)}</div>
       </div>
     </div>`;
-  }).join('');
+  }).join('')}</div>`;
+
+  grid.querySelectorAll('.poster-card').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.dataset.chIdx);
+      toggleCCSource(channels[idx]);
+    });
+  });
 }
 
 function toggleCCSource(ch) {
   const idx = ccSources.findIndex(s => s.channelId === ch.id && s.addonUrl === ch.addonUrl);
   if (idx >= 0) ccSources.splice(idx, 1);
-  else ccSources.push({ addonName: ch.addonName, addonUrl: ch.addonUrl, channelId: ch.id, channelName: ch.name });
+  else ccSources.push({ addonName: ch.addonName, addonUrl: ch.addonUrl, channelId: ch.id, channelName: ch.name, channelLogo: ch.logo || '' });
   renderCCSources();
   filterCCChannels();
 }
 
-function saveCustomChannel() {
-  const name = document.getElementById('cc-name').value.trim();
-  if (!name) { toast('Channel name is required', 'error'); return; }
-  if (!ccSources.length) { toast('Add at least one source', 'error'); return; }
-  const logo = document.getElementById('cc-logo').value.trim();
-  const id = ccEditingId || ('stremirow-' + slugify(name) + '-' + Date.now());
-  const item = { id, type: 'tv', title: name, thumbnail: logo, description: '', sources: ccSources };
+async function loadCCAddonChannels() {
+  // If channels already loaded, just filter — no re-fetch needed
+  if (ccAllChannels.length) { applyCCFilter(); return; }
+  // Otherwise trigger a full load (e.g. modal reopened after tvAddons cleared)
+  await loadAllCCChannels();
+}
 
-  let ccRow = config.rows.find(r => r.id === 'custom-channels');
-  if (!ccRow) {
-    ccRow = { id: 'custom-channels', name: 'Custom Channels', contentType: 'tv', items: [] };
-    config.rows.push(ccRow);
+function onCCAddonChange() {
+  const sel = document.getElementById('cc-addon-select');
+  const addonIdx = sel ? parseInt(sel.value) : NaN;
+  const genreSel = document.getElementById('cc-genre-select');
+
+  if (!isNaN(addonIdx) && tvAddons[addonIdx]) {
+    const addon = tvAddons[addonIdx];
+    const genres = new Set();
+    (addon.manifest.catalogs || [])
+      .filter(c => c.type === 'tv' || c.type === 'channel')
+      .forEach(cat => {
+        const genreExtra = (cat.extra || []).find(e => e.name === 'genre');
+        if (genreExtra && genreExtra.options) {
+          genreExtra.options.filter(g => !isCCFilteredGenre(g)).forEach(g => genres.add(g));
+        }
+      });
+    if (genreSel) {
+      genreSel.innerHTML = '<option value="">All Genres</option>' +
+        Array.from(genres).sort().map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+      genreSel.disabled = false;
+    }
+  } else if (genreSel) {
+    genreSel.innerHTML = '<option value="">All Genres</option>';
+    genreSel.disabled = true;
   }
-  const existingIdx = ccRow.items.findIndex(i => i.id === id);
-  if (existingIdx >= 0) ccRow.items[existingIdx] = item; else ccRow.items.push(item);
+
+  if (!ccAllChannels.length) {
+    loadAllCCChannels();
+  } else {
+    applyCCFilter();
+  }
+}
+
+function onCCGenreChange() {
+  applyCCFilter();
+}
+
+function filterCCChannels() {
+  applyCCFilter();
+}
+
+function saveCustomChannel() {
+  if (!ccEditingId) return;
+  if (!ccSources.length) { toast('Add at least one source', 'error'); return; }
+
+  // Patch sources onto the existing item in-place
+  for (const row of config.rows) {
+    const item = (row.items || []).find(i => i.id === ccEditingId);
+    if (item) {
+      item.sources = ccSources;
+      // Auto-name from primary source's channel name if still on placeholder
+      if (!item.title || item.title === 'New Channel') {
+        item.title = ccSources[0].channelName || 'Custom Channel';
+      }
+      // Auto-logo from primary source if no custom logo uploaded
+      if (!item.thumbnail && ccSources[0].channelLogo) {
+        item.thumbnail = ccSources[0].channelLogo;
+      }
+      break;
+    }
+  }
+
   markDirty();
   renderRows();
   renderCustomChannelsPanel();
 
   if (document.getElementById('builder-modal').classList.contains('open')) {
-    const existing = tempRowItems.findIndex(i => i.id === id);
-    if (existing >= 0) tempRowItems[existing] = item; else tempRowItems.push(item);
-    renderRowItems();
-    filterTVChannels();
+    const item = config.rows.flatMap(r => r.items || []).find(i => i.id === ccEditingId);
+    if (item) {
+      const idx = tempRowItems.findIndex(i => i.id === ccEditingId);
+      if (idx >= 0) tempRowItems[idx] = item; else tempRowItems.push(item);
+      renderRowItems();
+      filterTVChannels();
+    }
   }
 
+  ccIsNew = false;
   closeModal('custom-channel-modal');
-  toast('Custom channel saved', 'success');
+  toast('Sources saved', 'success');
 }
 
 // ─── Sync Stremio

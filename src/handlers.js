@@ -76,14 +76,16 @@ function registerHandlers(builder, configProvider) {
         if (!sources.length) return { streams: [] };
 
         const streams = [];
-        for (const src of sources) {
+        for (let srcIdx = 0; srcIdx < sources.length; srcIdx++) {
+            const src = sources[srcIdx];
             try {
                 const url = `${src.addonUrl}/stream/tv/${encodeURIComponent(src.channelId)}.json`;
                 const res = await fetch(url, { headers: { 'User-Agent': 'stremirow/1.0' } });
                 if (!res.ok) continue;
                 const data = await res.json();
+                const priority = srcIdx === 0 ? 'Primary' : `Backup ${srcIdx}`;
                 (data.streams || []).forEach(s => {
-                    streams.push({ ...s, name: src.label || src.addonName || s.name, title: src.streamTitle || s.title });
+                    streams.push({ ...s, name: src.addonName || s.name, title: priority });
                 });
             } catch (e) {
                 console.error(`[stream] failed ${src.addonUrl}:`, e.message);

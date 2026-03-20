@@ -91,8 +91,7 @@ function mountAdmin(app, onReload) {
         try {
             console.log(`🔄  Refreshing Stremio Addon Collection for ${auth.email}...`);
             const result = await stremioPost('/api/addonCollectionGet', { authKey: auth.authKey });
-            if (result.error) {
-                const msg = result.error.message || '';
+            if (result.error) {                const msg = result.error.message || '';
                 if (/unauthorized|invalid|expired|auth/i.test(msg)) {
                     await AUTH.clearAuth();
                     return res.status(401).json({ error: 'Session expired, please log in again' });

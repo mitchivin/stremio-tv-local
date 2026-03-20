@@ -1,0 +1,52 @@
+/**
+ * manifest.js
+ * Dynamically builds the Stremio addon manifest from the loaded config.
+ *
+ * Row content types:
+ *  - "movie" / "series" / "tv": this addon supplies the custom curated
+ *    catalog row; streams are served by the user's other installed addons.
+ *
+ * Each row entry in ui-config.json becomes one catalog → one home-screen row.
+ */
+
+// The set of content types among items across all rows
+const CONTENT_TYPES = ['movie', 'series', 'tv'];
+
+function buildManifest(addonMeta, rows) {
+    // Each row becomes one catalog entry.
+    const catalogs = rows.map(row => {
+        const type = row.contentType || 'movie';
+        const posterShape = type === 'tv' ? 'square' : 'poster';
+
+        return {
+            id: row.id,
+            type,
+            name: row.name,
+            posterShape,
+            extra: [{ name: 'skip', isRequired: false }],
+        };
+    });
+
+    // We always declare 'catalog' and all content types
+    // so the SDK doesn't crash if they are missing at boot.
+    // The dynamic /manifest.json will still filter what Stremio *sees*.
+    return {
+        id: 'com.stremirow.custom',
+        version: addonMeta.version || '1.0.0',
+        name: 'StremiRow',
+        description: addonMeta.description || 'Personal curated rows...',
+        logo: addonMeta.logo || undefined,
+
+        resources: [
+            'catalog',
+            { name: 'meta', types: ['tv'], idPrefixes: ['stremirow-'] },
+            { name: 'stream', types: ['tv'], idPrefixes: ['stremirow-'] }
+        ],
+        types: CONTENT_TYPES,
+        catalogs,
+
+        behaviorHints: { adult: false, p2p: false },
+    };
+}
+module.exports = { buildManifest };
+

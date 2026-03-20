@@ -83,7 +83,7 @@ function registerHandlers(builder, configProvider) {
                 if (!res.ok) continue;
                 const data = await res.json();
                 (data.streams || []).forEach(s => {
-                    streams.push({ ...s, name: src.addonName || s.name });
+                    streams.push({ ...s, name: src.label || src.addonName || s.name, title: src.streamTitle || s.title });
                 });
             } catch (e) {
                 console.error(`[stream] failed ${src.addonUrl}:`, e.message);

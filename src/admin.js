@@ -1,5 +1,6 @@
 'use strict';
 
+const path = require('path');
 const https = require('https');
 const storage = require('./storage');
 const HTML_FILE = storage.HTML_FILE;
@@ -32,7 +33,12 @@ function stremioPost(apiPath, body) {
 }
 
 function mountAdmin(app, onReload) {
+    const CSS_FILE = path.join(__dirname, 'admin.css');
+    const JS_FILE = path.join(__dirname, 'admin-ui.js');
+
     app.get('/admin', (_req, res) => res.sendFile(HTML_FILE));
+    app.get('/admin.css', (_req, res) => res.sendFile(CSS_FILE));
+    app.get('/admin-ui.js', (_req, res) => res.sendFile(JS_FILE));
 
     app.get('/api/config', async (_req, res) => {
         try {
@@ -143,20 +149,6 @@ function mountAdmin(app, onReload) {
         }
     });
 
-    // Proxy a stream request to another addon (used by custom channel builder)
-    app.get('/api/stremio/proxy-stream', async (req, res) => {
-        const { addonUrl, channelId } = req.query;
-        if (!addonUrl || !channelId) return res.status(400).json({ error: 'addonUrl and channelId required' });
-        try {
-            const url = `${addonUrl}/stream/tv/${encodeURIComponent(channelId)}.json`;
-            const response = await fetch(url, { headers: { 'User-Agent': 'stremio-row-factory/1.0' } });
-            if (!response.ok) return res.json({ streams: [] });
-            const data = await response.json();
-            res.json(data);
-        } catch (e) {
-            res.status(500).json({ error: e.message });
-        }
-    });
 }
 
 module.exports = { mountAdmin };

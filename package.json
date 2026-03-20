@@ -4,8 +4,7 @@
   "description": "A Stremio addon that creates N custom home-screen rows from a JSON config.",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "dotenv": "^17.3.1",

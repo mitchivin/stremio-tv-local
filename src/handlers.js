@@ -76,11 +76,11 @@ function registerHandlers(builder, configProvider) {
         if (!sources.length) return { streams: [] };
 
         const streams = [];
-        await Promise.all(sources.map(async (src) => {
+        for (const src of sources) {
             try {
                 const url = `${src.addonUrl}/stream/tv/${encodeURIComponent(src.channelId)}.json`;
                 const res = await fetch(url, { headers: { 'User-Agent': 'stremirow/1.0' } });
-                if (!res.ok) return;
+                if (!res.ok) continue;
                 const data = await res.json();
                 (data.streams || []).forEach(s => {
                     streams.push({ ...s, name: src.addonName || s.name });
@@ -88,7 +88,7 @@ function registerHandlers(builder, configProvider) {
             } catch (e) {
                 console.error(`[stream] failed ${src.addonUrl}:`, e.message);
             }
-        }));
+        }
 
         return { streams };
     });

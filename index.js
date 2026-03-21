@@ -61,6 +61,13 @@ app.use((req, res, next) => {
     next();
 });
 
+// User ID generation endpoint
+app.post('/api/user/generate', (_req, res) => {
+    const { generateUserId } = require('./src/storage');
+    const userId = generateUserId();
+    res.json({ userId });
+});
+
 // A1X IPTV addon — mounted at /a1x/
 app.use('/logos', express.static(path.join(__dirname, 'logos')));
 app.use('/a1x', a1xRouter);
@@ -68,20 +75,31 @@ app.use('/a1x', a1xRouter);
 // Dynamic SDK Router middleware — only handles catalog/stream/meta routes, NOT manifest
 app.use(async (req, res, next) => {
     // Skip SDK router for admin, API, and manifest routes
-    if (req.path.startsWith('/api/') || req.path.startsWith('/admin') || req.path === '/manifest.json') return next();
-    // On Vercel, always ensure config is loaded before serving catalog requests
-    if (!activeSdkRouter) {
-        if (startupPromise) await startupPromise;
-        if (!activeSdkRouter) return next();
-    }
-    // Always reload config before serving catalogs so we never serve stale data
+    if (req.path.startsWith('/api/') || req.path.startsWith('/admin') || req.path === '/manifest.json' || req.path.endsWith('/manifest.json')) return next();
+    
+    // Extract userId from path if present: /user-xxx/catalog/...
+    const userIdMatch = req.path.match(/^\/(user-[^\/]+)\//);
+    const userId = userIdMatch ? userIdMatch[1] : null;
+    
+    // Load user-specific config and rebuild router
     try {
-        const fresh = await loadConfig();
-        if (JSON.stringify(fresh.rows) !== JSON.stringify(currentConfig?.rows)) {
-            currentConfig = fresh;
-            rebuildSdkRouter();
-        }
-    } catch (_) {}
+        const fresh = await loadConfig(userId);
+        currentConfig = fresh;
+        rebuildSdkRouter();
+    } catch (e) {
+        console.error('Failed to load config:', e.message);
+        return res.status(500).json({ error: 'Failed to load configuration' });
+    }
+    
+    // Strip userId from URL before passing to SDK router
+    if (userId) {
+        req.url = req.url.replace(`/${userId}`, '');
+    }
+    
+    if (!activeSdkRouter) {
+        return res.status(503).json({ error: 'Addon not initialized' });
+    }
+    
     activeSdkRouter(req, res, next);
 });
 
@@ -102,6 +120,22 @@ app.get('/manifest.json', async (_req, res) => {
         res.setHeader('Cache-Control', 'max-age=0, no-cache, no-store, must-revalidate');
         res.json(m);
     } catch (e) {
+        res.status(503).json({ error: e.message });
+    }
+});
+
+// Per-user manifest endpoint
+app.get('/:userId/manifest.json', async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        console.log(`📋 Loading manifest for user: ${userId}`);
+        const config = await loadConfig(userId);
+        console.log(`✅ User ${userId} has ${config.rows.length} rows`);
+        const m = buildManifest(config.addonMeta, config.rows);
+        res.setHeader('Cache-Control', 'max-age=0, no-cache, no-store, must-revalidate');
+        res.json(m);
+    } catch (e) {
+        console.error(`❌ Manifest error for user ${req.params.userId}:`, e.message);
         res.status(503).json({ error: e.message });
     }
 });

@@ -60,9 +60,10 @@ function mountAdmin(app, onReload) {
     app.get('/admin-ui-channels.js', (_req, res) => res.sendFile(JS_CHANNELS));
     app.get('/admin-ui-auth.js', (_req, res) => res.sendFile(JS_AUTH));
 
-    app.get('/api/config', async (_req, res) => {
+    app.get('/api/config', async (req, res) => {
         try {
-            const config = await storage.loadConfig();
+            const userId = req.query.userId || null;
+            const config = await storage.loadConfig(userId);
             res.json(storage.normalizeConfig(config));
         } catch (e) { res.status(500).json({ error: e.message }); }
     });
@@ -70,21 +71,24 @@ function mountAdmin(app, onReload) {
     app.put('/api/config', async (req, res) => {
         try {
             const cfg = req.body;
+            const userId = req.query.userId || null;
             if (!cfg || !cfg.addon || !Array.isArray(cfg.rows))
                 return res.status(400).json({ error: 'Invalid config shape' });
-            await storage.saveConfig(cfg);
+            await storage.saveConfig(cfg, userId);
             if (onReload) await onReload();
             res.json({ ok: true, rows: cfg.rows.length });
         } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
-    app.get('/api/stremio/status', async (_req, res) => {
-        const auth = await AUTH.loadAuth();
+    app.get('/api/stremio/status', async (req, res) => {
+        const userId = req.query.userId || null;
+        const auth = await AUTH.loadAuth(userId);
         res.json({ loggedIn: !!auth, email: auth?.email || null });
     });
 
     app.post('/api/stremio/login', async (req, res) => {
         const { email, password } = req.body || {};
+        const userId = req.query.userId || null;
         if (!email || !password)
             return res.status(400).json({ error: 'email and password required' });
         try {
@@ -92,7 +96,7 @@ function mountAdmin(app, onReload) {
             if (!result.result?.authKey)
                 return res.status(401).json({ error: result.error?.message || 'Stremio login failed' });
             try {
-                await AUTH.saveAuth({ authKey: result.result.authKey, email });
+                await AUTH.saveAuth({ authKey: result.result.authKey, email }, userId);
             } catch (gistErr) {
                 return res.status(500).json({ error: `Cloud Save Failed: ${gistErr.message}` });
             }
@@ -100,20 +104,22 @@ function mountAdmin(app, onReload) {
         } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
-    app.post('/api/stremio/logout', async (_req, res) => {
-        await AUTH.clearAuth();
+    app.post('/api/stremio/logout', async (req, res) => {
+        const userId = req.query.userId || null;
+        await AUTH.clearAuth(userId);
         res.json({ ok: true });
     });
 
-    app.get('/api/stremio/addons', async (_req, res) => {
-        const auth = await AUTH.loadAuth();
+    app.get('/api/stremio/addons', async (req, res) => {
+        const userId = req.query.userId || null;
+        const auth = await AUTH.loadAuth(userId);
         if (!auth) return res.status(401).json({ error: 'Not logged in' });
         try {
             console.log(`🔄  Refreshing Stremio Addon Collection for ${auth.email}...`);
             const result = await stremioPost('/api/addonCollectionGet', { authKey: auth.authKey });
             if (result.error) {                const msg = result.error.message || '';
                 if (/unauthorized|invalid|expired|auth/i.test(msg)) {
-                    await AUTH.clearAuth();
+                    await AUTH.clearAuth(userId);
                     return res.status(401).json({ error: 'Session expired, please log in again' });
                 }
                 return res.status(400).json({ error: msg });
@@ -127,7 +133,8 @@ function mountAdmin(app, onReload) {
     });
 
     app.post('/api/stremio/sync', async (req, res) => {
-        const auth = await AUTH.loadAuth();
+        const userId = req.query.userId || null;
+        const auth = await AUTH.loadAuth(userId);
         if (!auth) return res.status(401).json({ error: 'Not logged in' });
         try {
             // Get current addon collection

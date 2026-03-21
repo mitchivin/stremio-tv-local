@@ -5,7 +5,7 @@
 let sidebarAuthStatus = null;
 
 async function initSidebarAuth() {
-  sidebarAuthStatus = await fetch('/api/stremio/status').then(r => r.json()).catch(() => null);
+  sidebarAuthStatus = await fetch(`/api/stremio/status${getUserParam()}`).then(r => r.json()).catch(() => null);
   const headerAccount = document.getElementById('header-account');
   const modalContent = document.getElementById('account-modal-content');
 
@@ -75,18 +75,53 @@ async function sidebarDoLogin() {
   if (!email || !password) { err.textContent = 'Email and password required'; err.style.display = 'block'; return; }
   err.style.display = 'none'; btn.innerHTML = '<span class="material-icons" style="font-size:14px;margin-right:4px;">hourglass_empty</span>Connecting…'; btn.disabled = true;
   try {
-    const d = await fetch('/api/stremio/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }).then(r => r.json());
+    const d = await fetch(`/api/stremio/login${getUserParam()}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }).then(r => r.json());
     if (d.error) throw new Error(d.error);
     closeModal('stremio-login-modal');
     document.getElementById('sl-email').value = '';
     document.getElementById('sl-pass').value = '';
     await initSidebarAuth();
+    
+    // Load and render content after successful login
+    const savedData = localStorage.getItem('stremirow-config');
+    if (savedData) {
+      try {
+        const parsed = JSON.parse(savedData);
+        if (parsed.expiresAt && Date.now() < parsed.expiresAt) {
+          config = parsed.config;
+          console.log('✅ Loaded config from browser storage');
+        } else {
+          console.log('⚠️ Browser storage expired, loading from server');
+          localStorage.removeItem('stremirow-config');
+          const c = await fetch(`/api/config${getUserParam()}`).then(r => r.json());
+          config = c;
+        }
+      } catch (e) {
+        console.error('Failed to parse saved config:', e);
+        const c = await fetch(`/api/config${getUserParam()}`).then(r => r.json());
+        config = c;
+      }
+    } else {
+      const c = await fetch(`/api/config${getUserParam()}`).then(r => r.json());
+      config = c;
+    }
+    
+    if (config._orphanCustomChannels) {
+      window._orphanCustomChannels = config._orphanCustomChannels;
+    } else {
+      window._orphanCustomChannels = [];
+    }
+    
+    renderRows();
+    renderCustomChannelsPanel();
+    renderInstallTab();
+    
     toast('Connected to Stremio!', 'success');
   } catch (e) { err.textContent = e.message; err.style.display = 'block'; btn.textContent = 'Connect'; btn.disabled = false; }
 }
 
 async function sidebarLogout() {
-  await fetch('/api/stremio/logout', { method: 'POST' });
+  await fetch(`/api/stremio/logout${getUserParam()}`, { method: 'POST' });
   await initSidebarAuth();
   toast('Disconnected', 'success');
 }
@@ -104,7 +139,7 @@ async function syncStremio() {
   if (textEl) textEl.textContent = 'Syncing…';
   try {
     await saveAll();
-    const r = await fetch('/api/stremio/sync', { method: 'POST' });
+    const r = await fetch(`/api/stremio/sync${getUserParam()}`, { method: 'POST' });
     const d = await r.json();
     if (d.error) throw new Error(d.error);
     if (btn) btn.className = 'floating-action-btn btn-primary success';
@@ -126,7 +161,7 @@ async function syncStremio() {
 }
 
 function installStremio() {
-  const manifestUrl = location.origin + '/manifest.json';
+  const manifestUrl = userId ? `${location.origin}/${userId}/manifest.json` : `${location.origin}/manifest.json`;
   if (location.protocol === 'http:') {
     prompt('Local Addons must be pasted into Stremio manually.\n\nCopy this link and paste it into the Stremio search bar to update your rows:', manifestUrl);
   } else {
@@ -135,7 +170,8 @@ function installStremio() {
 }
 
 function renderInstallTab() {
-  document.getElementById('set-install-url').value = location.origin + '/manifest.json';
+  const manifestUrl = userId ? `${location.origin}/${userId}/manifest.json` : `${location.origin}/manifest.json`;
+  document.getElementById('set-install-url').value = manifestUrl;
   document.getElementById('a1x-install-url').value = location.origin + '/a1x/manifest.json';
 }
 
@@ -161,3 +197,4 @@ function installA1x() {
   }
   window.location.href = manifestUrl.replace('https:', 'stremio:');
 }
+

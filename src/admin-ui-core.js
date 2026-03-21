@@ -14,6 +14,22 @@ function isTvAddon(a) {
   return t.includes('tv') || t.includes('channel');
 }
 
+// ─── User ID Management
+let userId = localStorage.getItem('stremirow-user-id');
+async function ensureUserId() {
+  if (!userId) {
+    const res = await fetch('/api/user/generate', { method: 'POST' });
+    const data = await res.json();
+    userId = data.userId;
+    localStorage.setItem('stremirow-user-id', userId);
+  }
+  return userId;
+}
+
+function getUserParam() {
+  return userId ? `?userId=${userId}` : '';
+}
+
 // ─── Util
 function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function safeJson(o) { return JSON.stringify(o).replace(/'/g, '&#39;'); }
@@ -62,6 +78,7 @@ function collectSettings() {
 
 // ─── Save
 async function saveAll() {
+  await ensureUserId();
   collectSettings();
   const parts = (config.addon.version || '1.0.0').split('.').map(Number);
   parts[2] = (parts[2] || 0) + 1;
@@ -74,10 +91,18 @@ async function saveAll() {
     delete config._orphanCustomChannels;
   }
 
+  // Save to browser localStorage with 30-day expiry
+  const configData = {
+    config: config,
+    timestamp: Date.now(),
+    expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000) // 30 days
+  };
+  localStorage.setItem('stremirow-config', JSON.stringify(configData));
+
   const statusEl = document.getElementById('save-status');
   if (statusEl) { statusEl.textContent = '⏳ Saving…'; statusEl.style.color = 'var(--soft)'; }
   try {
-    const r = await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+    const r = await fetch(`/api/config${getUserParam()}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
     if (!r.ok) throw new Error('Save failed');
     if (statusEl) {
       statusEl.textContent = 'Saved ✓';
@@ -94,24 +119,51 @@ async function saveAll() {
 async function init() {
   if (location.port === '5500') { alert('⚠️ Use http://127.0.0.1:7000/admin instead of Live Server.'); return; }
   try {
-    const c = await fetch('/api/config').then(r => r.json());
-    config = c;
+    await ensureUserId();
     
-    // Load orphan custom channels from config
-    if (config._orphanCustomChannels) {
-      window._orphanCustomChannels = config._orphanCustomChannels;
-    } else {
-      window._orphanCustomChannels = [];
-    }
-    
-    renderRows();
-    renderCustomChannelsPanel();
-    renderInstallTab();
+    // Check auth status first
     await initSidebarAuth();
+    
+    // Only load and render content if logged in
+    if (sidebarAuthStatus && sidebarAuthStatus.loggedIn) {
+      // Try to load from localStorage first
+      const savedData = localStorage.getItem('stremirow-config');
+      if (savedData) {
+        try {
+          const parsed = JSON.parse(savedData);
+          // Check if expired
+          if (parsed.expiresAt && Date.now() < parsed.expiresAt) {
+            config = parsed.config;
+            console.log('✅ Loaded config from browser storage');
+          } else {
+            console.log('⚠️ Browser storage expired, loading from server');
+            localStorage.removeItem('stremirow-config');
+            const c = await fetch(`/api/config${getUserParam()}`).then(r => r.json());
+            config = c;
+          }
+        } catch (e) {
+          console.error('Failed to parse saved config:', e);
+          const c = await fetch(`/api/config${getUserParam()}`).then(r => r.json());
+          config = c;
+        }
+      } else {
+        const c = await fetch(`/api/config${getUserParam()}`).then(r => r.json());
+        config = c;
+      }
+      
+      // Load orphan custom channels from config
+      if (config._orphanCustomChannels) {
+        window._orphanCustomChannels = config._orphanCustomChannels;
+      } else {
+        window._orphanCustomChannels = [];
+      }
+      
+      renderRows();
+      renderCustomChannelsPanel();
+      renderInstallTab();
+    }
   } catch (e) { toast('Failed to load config: ' + e.message, 'error'); }
 }
-
-init();
 
 function confirmLogout() {
   if (confirm('Are you sure you want to logout?')) {

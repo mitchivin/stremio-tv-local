@@ -182,7 +182,7 @@ async function openCustomChannelModal(existingItem) {
   if (!tvAddons.length) {
     setCCStatus('Loading addons…');
     try {
-      const d = await fetch('/api/stremio/addons').then(r => r.json());
+      const d = await fetch(`/api/stremio/addons${getUserParam()}`).then(r => r.json());
       tvAddons = (d.addons || []).filter(isTvAddon);
     } catch (e) { tvAddons = []; }
   }

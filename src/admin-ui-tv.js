@@ -89,7 +89,7 @@ async function updateTVPanel() {
     return;
   }
 
-  const auth = await fetch('/api/stremio/status').then(r => r.json()).catch(() => null);
+  const auth = await fetch(`/api/stremio/status${getUserParam()}`).then(r => r.json()).catch(() => null);
   if (!auth || !auth.loggedIn) {
     body.innerHTML = `<div class="empty" style="padding:40px 0;text-align:center;">
       <div class="empty-icon"><span class="material-icons" style="font-size:48px;color:var(--color-text-disabled);">lock</span></div>
@@ -103,7 +103,7 @@ async function updateTVPanel() {
   if (!tvAddons.length) {
     setCCStatus('Loading addons…');
     try {
-      const resp = await fetch('/api/stremio/addons');
+      const resp = await fetch(`/api/stremio/addons${getUserParam()}`);
       if (resp.status === 401) {
         body.innerHTML = '<div class="empty"><div class="empty-icon"><span class="material-icons" style="font-size:48px;color:var(--color-text-disabled);">lock</span></div><div class="empty-text">Session expired. Please sign in again.</div></div>';
         if (toolbar) toolbar.style.display = 'none';

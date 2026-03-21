@@ -48,17 +48,26 @@ function normalizeAuth(data) {
 }
 
 /**
- * Load config from Gist or Local file
+ * Generate a unique user ID
  */
-async function loadConfig() {
+function generateUserId() {
+    return 'user-' + Date.now() + '-' + Math.random().toString(36).substring(2, 15);
+}
+
+/**
+ * Load config from Gist or Local file (per-user)
+ */
+async function loadConfig(userId = null) {
+    const filename = userId ? `${userId}-config.json` : 'ui-config.json';
+    
     if (GIST_ID && GH_TOKEN) {
-        console.log(`☁️  Loading config from Gist ID: ${GIST_ID.substring(0, 4)}...`);
+        console.log(`☁️  Loading config from Gist: ${filename}`);
         try {
             const gist = await fetchGist();
-            if (gist.files && gist.files['ui-config.json']) {
-                return normalizeConfig(JSON.parse(gist.files['ui-config.json'].content));
+            if (gist.files && gist.files[filename]) {
+                return normalizeConfig(JSON.parse(gist.files[filename].content));
             }
-            console.log('⚠️  ui-config.json not found in Gist, returning default.');
+            console.log(`⚠️  ${filename} not found in Gist, returning default.`);
         } catch (e) {
             console.error(`❌ Gist load error: ${e.message}`);
         }
@@ -66,38 +75,51 @@ async function loadConfig() {
     }
 
     // Fallback to local
-    if (!fs.existsSync(LOCAL_CONFIG)) {
+    const localPath = userId ? path.join(ROOT, `${userId}-config.json`) : LOCAL_CONFIG;
+    if (!fs.existsSync(localPath)) {
         return normalizeConfig({});
     }
-    return normalizeConfig(JSON.parse(fs.readFileSync(LOCAL_CONFIG, 'utf8')));
+    return normalizeConfig(JSON.parse(fs.readFileSync(localPath, 'utf8')));
 }
 
 /**
- * Save config to Gist or Local file
+ * Save config to Gist or Local file (per-user)
  */
-async function saveConfig(config) {
+async function saveConfig(config, userId = null) {
     const data = normalizeConfig(config);
     const json = JSON.stringify(data, null, 2);
+    const filename = userId ? `${userId}-config.json` : 'ui-config.json';
 
     if (GIST_ID && GH_TOKEN) {
-        console.log(`☁️  Saving config to Gist ID: ${GIST_ID.substring(0, 4)}...`);
-        return updateGist({ 'ui-config.json': { content: json } });
+        console.log(`☁️  Saving config to Gist: ${filename}`);
+        try {
+            const result = await updateGist({ [filename]: { content: json } });
+            console.log(`✅  Config saved to Gist: ${filename}`);
+            return result;
+        } catch (e) {
+            console.error(`❌  Failed to save config to Gist: ${e.message}`);
+            throw e;
+        }
     }
 
     // Fallback to local
-    fs.writeFileSync(LOCAL_CONFIG, json, 'utf8');
+    const localPath = userId ? path.join(ROOT, `${userId}-config.json`) : LOCAL_CONFIG;
+    fs.writeFileSync(localPath, json, 'utf8');
+    console.log(`✅  Config saved locally: ${localPath}`);
     return { ok: true };
 }
 
 /**
- * Load auth from Gist or Local file
+ * Load auth from Gist or Local file (per-user)
  */
-async function loadAuth() {
+async function loadAuth(userId = null) {
+    const filename = userId ? `${userId}-auth.json` : 'stremio-auth.json';
+    
     if (GIST_ID && GH_TOKEN) {
         try {
             const gist = await fetchGist();
-            if (gist.files && gist.files['stremio-auth.json']) {
-                return normalizeAuth(JSON.parse(gist.files['stremio-auth.json'].content));
+            if (gist.files && gist.files[filename]) {
+                return normalizeAuth(JSON.parse(gist.files[filename].content));
             }
         } catch (e) {
             console.error(`❌ Gist auth load error: ${e.message}`);
@@ -105,34 +127,40 @@ async function loadAuth() {
         return null;
     }
 
-    try { return normalizeAuth(JSON.parse(fs.readFileSync(LOCAL_AUTH, 'utf8'))); }
+    const localPath = userId ? path.join(ROOT, `${userId}-auth.json`) : LOCAL_AUTH;
+    try { return normalizeAuth(JSON.parse(fs.readFileSync(localPath, 'utf8'))); }
     catch (_) { return null; }
 }
 
 /**
- * Save auth to Gist or Local file
+ * Save auth to Gist or Local file (per-user)
  */
-async function saveAuth(data) {
+async function saveAuth(data, userId = null) {
     const json = JSON.stringify(data, null, 2);
+    const filename = userId ? `${userId}-auth.json` : 'stremio-auth.json';
 
     if (GIST_ID && GH_TOKEN) {
-        console.log(`☁️  Saving auth to Gist ID: ${GIST_ID.substring(0, 4)}...`);
-        return updateGist({ 'stremio-auth.json': { content: json } });
+        console.log(`☁️  Saving auth to Gist: ${filename}`);
+        return updateGist({ [filename]: { content: json } });
     }
 
-    fs.writeFileSync(LOCAL_AUTH, json, 'utf8');
+    const localPath = userId ? path.join(ROOT, `${userId}-auth.json`) : LOCAL_AUTH;
+    fs.writeFileSync(localPath, json, 'utf8');
 }
 
 /**
- * Clear auth from Gist or Local file
+ * Clear auth from Gist or Local file (per-user)
  */
-async function clearAuth() {
+async function clearAuth(userId = null) {
+    const filename = userId ? `${userId}-auth.json` : 'stremio-auth.json';
+    
     if (GIST_ID && GH_TOKEN) {
-        console.log(`☁️  Clearing auth from Gist ID: ${GIST_ID.substring(0, 4)}...`);
-        return updateGist({ 'stremio-auth.json': null });
+        console.log(`☁️  Clearing auth from Gist: ${filename}`);
+        return updateGist({ [filename]: null });
     }
 
-    if (fs.existsSync(LOCAL_AUTH)) fs.unlinkSync(LOCAL_AUTH);
+    const localPath = userId ? path.join(ROOT, `${userId}-auth.json`) : LOCAL_AUTH;
+    if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -204,4 +232,4 @@ function updateGist(files) {
     });
 }
 
-module.exports = { loadConfig, saveConfig, loadAuth, saveAuth, clearAuth, normalizeConfig, HTML_FILE };
+module.exports = { loadConfig, saveConfig, loadAuth, saveAuth, clearAuth, normalizeConfig, generateUserId, HTML_FILE };

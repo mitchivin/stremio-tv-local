@@ -19,8 +19,8 @@ function slugify(name) {
 /**
  * Load and validate the configuration from the storage layer.
  */
-async function loadConfig() {
-  const uiConfig = await storage.loadConfig();
+async function loadConfig(userId = null) {
+  const uiConfig = await storage.loadConfig(userId);
 
   if (!uiConfig.addon || !uiConfig.addon.id || !uiConfig.addon.name) {
     throw new Error('Configuration must have an "addon" object with at least "id" and "name" fields.');

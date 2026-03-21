@@ -321,6 +321,12 @@ async function loadAllCCChannels() {
 
   setCCStatus(`${ccAllChannels.length} channels from ${tvAddons.length} addon${tvAddons.length !== 1 ? 's' : ''}`);
   applyCCFilter();
+  
+  // Show "Add All Multi-Source" button if there are suggestions
+  const addAllBtn = document.getElementById('cc-add-all-btn');
+  if (addAllBtn && document.getElementById('custom-channel-modal').classList.contains('open')) {
+    addAllBtn.style.display = ccDetectedMatches.length > 0 ? '' : 'none';
+  }
 }
 
 function buildDetectedMatches() {
@@ -587,4 +593,60 @@ function onCCGenreChange() {
 
 function filterCCChannels() {
   applyCCFilter();
+}
+
+function addAllMultiSourceChannels() {
+  if (!ccDetectedMatches.length) {
+    toast('No multi-source channels detected', 'error');
+    return;
+  }
+  
+  const count = ccDetectedMatches.length;
+  if (!confirm(`Add all ${count} multi-source channel${count !== 1 ? 's' : ''} as custom channels?`)) return;
+  
+  // Find or create the "Custom Channels" row
+  let ccRow = config.rows.find(r => r.id === 'custom-channels');
+  if (!ccRow) {
+    ccRow = { id: 'custom-channels', name: 'Custom Channels', contentType: 'tv', items: [] };
+    config.rows.push(ccRow);
+  }
+  
+  let addedCount = 0;
+  const existingIds = new Set(getAllCustomChannels().map(ch => ch.id));
+  
+  for (const suggestion of ccDetectedMatches) {
+    const id = 'stremirow-' + slugify(suggestion.displayName) + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    
+    // Skip if already exists
+    if (existingIds.has(id)) continue;
+    
+    const item = {
+      id,
+      type: 'tv',
+      title: suggestion.displayName,
+      thumbnail: suggestion.logo || '',
+      description: '',
+      sources: suggestion.sources.map(src => ({
+        addonName: src.addonName,
+        addonUrl: src.addonUrl,
+        channelId: src.channelId,
+        channelName: src.channelName,
+        channelLogo: src.channelLogo
+      }))
+    };
+    
+    ccRow.items.push(item);
+    existingIds.add(id);
+    addedCount++;
+  }
+  
+  if (addedCount > 0) {
+    markDirty();
+    renderCustomChannelsPanel();
+    renderRows();
+    closeCCModal();
+    toast(`Added ${addedCount} multi-source channel${addedCount !== 1 ? 's' : ''}`, 'success');
+  } else {
+    toast('All multi-source channels already exist', 'success');
+  }
 }

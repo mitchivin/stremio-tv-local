@@ -1,0 +1,253 @@
+/* ═══════════════════════════════════════════════════════════════
+   STREMIROW ADMIN - FORMS & BUTTONS
+   Button System, Forms, Inputs, FABs
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ───────────────────────────────────────────────────────────────
+   BUTTON SYSTEM
+   ─────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-family);
+  cursor: pointer;
+  border: none;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Button Variants */
+.btn-primary {
+  background: var(--color-accent-primary);
+  color: #000000;
+  box-shadow: 0 0 16px var(--color-accent-glow);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  box-shadow: 0 0 24px var(--color-accent-glow);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-surface-overlay);
+  border-color: var(--color-border-strong);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-default);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-primary);
+}
+
+.btn-danger {
+  background: var(--color-error-dim);
+  color: var(--color-error);
+  border: 1px solid transparent;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--color-error);
+  color: #ffffff;
+}
+
+/* Button Sizes */
+.btn-sm {
+  padding: 6px var(--space-3);
+  font-size: 12px;
+}
+
+.btn-lg {
+  padding: var(--space-3) var(--space-5);
+  font-size: 14px;
+}
+
+/* Icon Buttons */
+.btn-icon {
+  padding: var(--space-2);
+  aspect-ratio: 1;
+}
+
+.btn .material-icons {
+  font-size: 18px;
+}
+
+.btn-sm .material-icons {
+  font-size: 16px;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   FLOATING ACTION BUTTONS - BOTTOM RIGHT ONLY
+   ─────────────────────────────────────────────────────────────── */
+.fab-container {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 100;
+  bottom: var(--space-4);
+  right: var(--space-4);
+}
+
+.fab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  white-space: nowrap;
+  min-width: 48px;
+  font-family: var(--font-family);
+}
+
+.fab:hover {
+  background: var(--color-surface-overlay);
+  border-color: var(--color-accent-primary);
+  color: var(--color-accent-primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg), 0 0 20px var(--color-accent-glow);
+}
+
+.fab:active {
+  transform: translateY(0);
+}
+
+.fab .material-icons {
+  font-size: 20px;
+}
+
+/* FAB with text */
+.fab-with-text {
+  min-width: 120px;
+}
+
+/* FAB Variants */
+.fab-primary {
+  background: var(--color-accent-primary);
+  color: #000000;
+  border-color: var(--color-accent-primary);
+  box-shadow: var(--shadow-lg), 0 0 16px var(--color-accent-glow);
+}
+
+.fab-primary:hover {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  color: #000000;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   FORMS & INPUTS
+   ─────────────────────────────────────────────────────────────── */
+.form-group {
+  margin-bottom: var(--space-4);
+}
+
+.form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-input,
+.form-select {
+  width: 100%;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-family: var(--font-family);
+  font-size: 14px;
+  padding: var(--space-3);
+  outline: none;
+  transition: all var(--transition-fast);
+}
+
+.form-input:focus,
+.form-select:focus {
+  border-color: var(--color-accent-primary);
+  box-shadow: 0 0 0 3px var(--color-accent-dim);
+}
+
+.form-input::placeholder {
+  color: var(--color-text-disabled);
+}
+
+/* Search Input */
+.search-wrapper {
+  position: relative;
+  flex: 1;
+}
+
+.search-input {
+  width: 100%;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-family: var(--font-family);
+  font-size: 14px;
+  padding: var(--space-3);
+  padding-left: 40px;
+  outline: none;
+  transition: all var(--transition-fast);
+}
+
+.search-input:focus {
+  border-color: var(--color-accent-primary);
+  box-shadow: 0 0 0 3px var(--color-accent-dim);
+}
+
+.search-input::placeholder {
+  color: var(--color-text-disabled);
+}
+
+.search-icon {
+  position: absolute;
+  left: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-tertiary);
+  pointer-events: none;
+  font-size: 20px;
+}

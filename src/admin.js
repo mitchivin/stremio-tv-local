@@ -33,12 +33,32 @@ function stremioPost(apiPath, body) {
 }
 
 function mountAdmin(app, onReload) {
-    const CSS_FILE = path.join(__dirname, 'admin.css');
-    const JS_FILE = path.join(__dirname, 'admin-ui.js');
+    const CSS_BASE = path.join(__dirname, 'admin-base.css');
+    const CSS_FORMS = path.join(__dirname, 'admin-forms.css');
+    const CSS_CARDS = path.join(__dirname, 'admin-cards.css');
+    const CSS_MODALS = path.join(__dirname, 'admin-modals.css');
+    const CSS_BUILDER = path.join(__dirname, 'admin-builder.css');
+    const CSS_CHANNELS = path.join(__dirname, 'admin-channels.css');
+    const JS_CORE = path.join(__dirname, 'admin-ui-core.js');
+    const JS_ROWS = path.join(__dirname, 'admin-ui-rows.js');
+    const JS_MOVIES = path.join(__dirname, 'admin-ui-movies.js');
+    const JS_TV = path.join(__dirname, 'admin-ui-tv.js');
+    const JS_CHANNELS = path.join(__dirname, 'admin-ui-channels.js');
+    const JS_AUTH = path.join(__dirname, 'admin-ui-auth.js');
 
     app.get('/admin', (_req, res) => res.sendFile(HTML_FILE));
-    app.get('/admin.css', (_req, res) => res.sendFile(CSS_FILE));
-    app.get('/admin-ui.js', (_req, res) => res.sendFile(JS_FILE));
+    app.get('/admin-base.css', (_req, res) => res.sendFile(CSS_BASE));
+    app.get('/admin-forms.css', (_req, res) => res.sendFile(CSS_FORMS));
+    app.get('/admin-cards.css', (_req, res) => res.sendFile(CSS_CARDS));
+    app.get('/admin-modals.css', (_req, res) => res.sendFile(CSS_MODALS));
+    app.get('/admin-builder.css', (_req, res) => res.sendFile(CSS_BUILDER));
+    app.get('/admin-channels.css', (_req, res) => res.sendFile(CSS_CHANNELS));
+    app.get('/admin-ui-core.js', (_req, res) => res.sendFile(JS_CORE));
+    app.get('/admin-ui-rows.js', (_req, res) => res.sendFile(JS_ROWS));
+    app.get('/admin-ui-movies.js', (_req, res) => res.sendFile(JS_MOVIES));
+    app.get('/admin-ui-tv.js', (_req, res) => res.sendFile(JS_TV));
+    app.get('/admin-ui-channels.js', (_req, res) => res.sendFile(JS_CHANNELS));
+    app.get('/admin-ui-auth.js', (_req, res) => res.sendFile(JS_AUTH));
 
     app.get('/api/config', async (_req, res) => {
         try {
@@ -106,10 +126,11 @@ function mountAdmin(app, onReload) {
         } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
-    app.post('/api/stremio/sync', async (_req, res) => {
+    app.post('/api/stremio/sync', async (req, res) => {
         const auth = await AUTH.loadAuth();
         if (!auth) return res.status(401).json({ error: 'Not logged in' });
         try {
+            // Get current addon collection
             const getResult = await stremioPost('/api/addonCollectionGet', {
                 type: 'AddonCollectionGet',
                 authKey: auth.authKey,
@@ -117,8 +138,30 @@ function mountAdmin(app, onReload) {
             });
             if (getResult.error) return res.status(400).json({ error: getResult.error.message });
 
-            const addons = getResult.result?.addons || [];
+            let addons = getResult.result?.addons || [];
+            
+            // Find our addon by manifest ID
+            const ourAddonIndex = addons.findIndex(a => a.manifest?.id === 'com.stremirow.custom');
 
+            if (ourAddonIndex >= 0) {
+                // Remove and re-add to force Stremio to refetch the manifest
+                const [ourAddon] = addons.splice(ourAddonIndex, 1);
+                
+                // First sync: remove our addon
+                await stremioPost('/api/addonCollectionSet', {
+                    type: 'AddonCollectionSet',
+                    authKey: auth.authKey,
+                    addons,
+                });
+                
+                // Wait a moment
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Re-add at the same position
+                addons.splice(ourAddonIndex, 0, ourAddon);
+            }
+
+            // Final sync with addon re-added
             const setResult = await stremioPost('/api/addonCollectionSet', {
                 type: 'AddonCollectionSet',
                 authKey: auth.authKey,
@@ -127,7 +170,7 @@ function mountAdmin(app, onReload) {
             if (setResult.error) return res.status(400).json({ error: setResult.error.message });
             if (!setResult.result?.success) return res.status(400).json({ error: 'Sync failed' });
 
-            res.json({ ok: true });
+            res.json({ ok: true, refreshed: ourAddonIndex >= 0 });
         } catch (e) { res.status(500).json({ error: e.message }); }
     });
 

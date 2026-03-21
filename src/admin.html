@@ -1,278 +1,380 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>Row Factory · Admin</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
-  <link rel="stylesheet" href="/admin.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StremiRow · Admin</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="/admin-base.css">
+  <link rel="stylesheet" href="/admin-forms.css">
+  <link rel="stylesheet" href="/admin-cards.css">
+  <link rel="stylesheet" href="/admin-modals.css">
+  <link rel="stylesheet" href="/admin-builder.css">
+  <link rel="stylesheet" href="/admin-channels.css">
 </head>
-
 <body>
-  <div class="layout">
-
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <div class="logo" onclick="onLogoClick(event)">
-        <div class="logo-icon">▶</div>
-        <div>
-          <div class="logo-name">StremiRow</div>
-          <div class="logo-sub">Custom Rows</div>
+  
+  <!-- ═══════════════════════════════════════════════════════════
+       APP LAYOUT
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="app-layout">
+    
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-brand" onclick="onLogoClick(event)">
+        <div class="brand-icon">▶</div>
+        <div class="brand-text">
+          <div class="brand-name">StremiRow</div>
         </div>
       </div>
-      <nav>
-        <button class="nav-item active" id="nav-rows" onclick="switchNav('rows')"><span class="nav-icon">≡</span> My Rows</button>
-        <button class="nav-item" id="nav-install" onclick="switchNav('install')"><span class="nav-icon">📥</span> Install</button>
-        <button class="nav-item" id="nav-custom-channels" onclick="switchNav('custom-channels')"><span class="nav-icon">📺</span> Custom Channels</button>
-        <button class="nav-item" id="nav-account" onclick="openModal('stremio-login-modal')"><span class="nav-icon">👤</span> Link Account</button>
-        <button class="nav-item" id="nav-sync" onclick="syncStremio()" title="Force Stremio to reload your rows"><span class="nav-icon">🔄</span> Sync Stremio</button>
-      </nav>
-    </aside>
-
-    <!-- Main -->
-    <main class="main">
-
-      <!-- ROWS -->
-      <div class="panel active" id="panel-rows">
-        <div class="ph">
-          <div class="ph-left">
-            <div class="ph-title">My Rows</div>
-            <div class="ph-desc">Custom categories on your Stremio home screen. Drag to reorder.</div>
-          </div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <div id="save-status" style="font-size: 11px; font-weight: 600; margin-right: 4px;"></div>
-            <button class="btn btn-danger btn-sm" onclick="clearAllRows()">Clear All</button>
-            <button class="btn btn-ghost" onclick="openBuilderModal()">+ Add Row</button>
-          </div>
-        </div>
-        <div class="pb">
-          <div id="row-list"></div>
+      
+      <div class="header-center">
+        <div class="header-actions">
+          <button class="btn btn-primary btn-sm" onclick="openModal('install-modal')">
+            <span class="material-icons">download</span>
+            Install
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="syncStremio()">
+            <span class="material-icons">sync</span>
+            Sync
+          </button>
         </div>
       </div>
-
-      <!-- INSTALL -->
-      <div class="panel" id="panel-install">
-        <div class="ph">
-          <div class="ph-left">
-            <div class="ph-title">Install Addon</div>
-            <div class="ph-desc">Follow these steps to add StremiRow to your Stremio library.</div>
-          </div>
-        </div>
-        <div class="pb">
-          <div class="install-guide" style="max-width: 600px;">
-            <div class="guide-step">
-              <div class="gs-num">1</div>
-              <div class="gs-content">
-                <div class="gs-title">Configure your rows</div>
-                <p>Add your favorite movies, series, or TV channels in the <b>My Rows</b> tab and click the <b>Save Changes</b> button.</p>
-              </div>
-            </div>
-            <div class="guide-step" style="margin-top: 24px;">
-              <div class="gs-num">2</div>
-              <div class="gs-content">
-                <div class="gs-title">Copy Manifest URL</div>
-                <p>Copy the URL below. It contains your unique configuration.</p>
-                <div style="display: flex; gap: 8px; margin-top: 10px;">
-                  <input class="form-input" id="set-install-url" readonly style="font-family:monospace; font-size:11px; cursor:text; flex: 1;" />
-                  <button class="btn btn-ghost" onclick="copyInstallUrl()">Copy</button>
-                </div>
-              </div>
-            </div>
-            <div class="guide-step" style="margin-top: 24px;">
-              <div class="gs-num">3</div>
-              <div class="gs-content">
-                <div class="gs-title">Add to Stremio</div>
-                <p>Open Stremio, go to the <b>Addons</b> section, click the <b>Add Addon</b> button (+), and paste the URL into the field. Or click below:</p>
-                <button class="btn btn-primary" style="margin-top: 10px;" onclick="installStremio()">Install to Stremio</button>
-              </div>
-            </div>
-            <div style="margin-top: 32px; padding: 16px; background: var(--surf3); border-radius: var(--r); border: 1px solid var(--border2); font-size: 11px; color: var(--muted);">
-              <p><b>Important:</b> Stremio caches your addon. To see your latest changes, you may need to <b>re-add</b> the manifest URL by clicking the <b>Add Addon</b> button again.</p>
-            </div>
-          </div>
-
-          <div id="a1x-section" class="a1x-install-card">
-            <div style="font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 6px;">A1X IPTV</div>
-            <div style="font-size: 12px; color: var(--soft); margin-bottom: 14px;">Live TV — Sports, Entertainment and News. Install this as a separate addon in Stremio.</div>
-            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-              <input class="form-input" id="a1x-install-url" readonly style="font-family:monospace; font-size:11px; cursor:text; flex: 1;" />
-              <button class="btn btn-ghost" onclick="copyA1xUrl()">Copy</button>
-            </div>
-            <button class="btn btn-primary" onclick="installA1x()">Install A1X to Stremio</button>
-          </div>
-        </div>
+      
+      <div class="header-account" id="header-account">
+        <!-- Populated by JS -->
       </div>
-
-      <!-- CUSTOM CHANNELS -->
-      <div class="panel" id="panel-custom-channels">
-        <div class="ph">
-          <div class="ph-left">
-            <div class="ph-title">Custom Channels</div>
-            <div class="ph-desc">Build channels from multiple addon sources.</div>
-          </div>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-danger btn-sm" onclick="deleteSelectedCustomChannels()">🗑 Delete Selected</button>
-            <button class="btn btn-danger btn-sm" onclick="clearAllCustomChannels()">Clear All</button>
-            <button class="btn btn-ghost" id="btn-auto-detect" onclick="autoDetectChannels()">⚡ Auto-Detect</button>
-            <button class="btn btn-ghost" onclick="newCustomChannel()">+ New Channel</button>
-          </div>
-        </div>
-        <div class="pb">
-          <div id="auto-detect-section" style="display:none;margin-bottom:24px;">
-            <div style="font-size:12px;font-weight:700;color:var(--soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">
-              Matched Channels <span id="auto-detect-count" style="font-weight:400;color:var(--muted);"></span>
+    </header>
+    
+    <!-- Main Content -->
+    <main class="app-main">
+      <div class="app-content">
+        
+        <!-- Custom Rows Section -->
+        <section class="content-section">
+          <div class="section-header">
+            <div class="section-header-text">
+              <h2 class="section-title">Custom Rows</h2>
+              <span class="section-subtitle">· Organize your content into curated collections</span>
             </div>
-            <div id="auto-detect-list"></div>
+            <div class="section-actions">
+              <button class="btn btn-secondary btn-sm" onclick="openBuilderModal()">
+                <span class="material-icons">add</span>
+                Add Row
+              </button>
+            </div>
           </div>
-          <div style="font-size:12px;font-weight:700;color:var(--soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;" id="saved-channels-label" style="display:none;">Saved Channels</div>
-          <div id="custom-channels-list"></div>
-        </div>
+          <div id="rows-container"></div>
+        </section>
+        
+        <!-- Custom Channels Section -->
+        <section class="content-section">
+          <div class="section-header">
+            <div class="section-header-text">
+              <h2 class="section-title">Custom Channels</h2>
+              <span class="section-subtitle">· Multi-source TV channels with automatic fallback</span>
+            </div>
+            <div class="section-actions">
+              <button class="btn btn-secondary btn-sm" onclick="newCustomChannel()">
+                <span class="material-icons">add</span>
+                New Channel
+              </button>
+            </div>
+          </div>
+          <div id="channels-container"></div>
+        </section>
+        
       </div>
-
     </main>
+    
   </div>
-
-  <!-- ROW BUILDER MODAL -->
+  
+  <!-- ═══════════════════════════════════════════════════════════
+       FLOATING ACTION BUTTONS - REMOVED (NOW IN HEADER)
+       ═══════════════════════════════════════════════════════════ -->
+  
+  <!-- ═══════════════════════════════════════════════════════════
+       MODALS
+       ═══════════════════════════════════════════════════════════ -->
+  
+  <!-- Row Builder Modal -->
   <div class="modal-overlay" id="builder-modal">
-    <div class="modal builder">
-      <div class="cc-modal-header">
-        <div class="builder-title-wrap">
-          <span class="cc-modal-title" id="builder-modal-title">New Row</span>
+    <div class="modal modal-large">
+      <div class="modal-header">
+        <div class="builder-title-group">
+          <span class="modal-title" id="builder-modal-title">New Row</span>
           <input class="form-input inline-rename-input" id="builder-title-input" style="display:none;"
             placeholder="Row name…"
             onkeydown="if(event.key==='Enter')commitInlineRename(); if(event.key==='Escape')cancelInlineRename();"
-            onblur="commitInlineRename()" />
-          <button class="btn btn-primary btn-sm" id="builder-rename-confirm" style="display:none;flex-shrink:0;" tabindex="-1" onmousedown="event.preventDefault()" onclick="commitInlineRename()">✓</button>
+            onblur="commitInlineRename()">
+          <button class="btn btn-primary btn-sm" id="builder-rename-confirm" style="display:none;" 
+            tabindex="-1" onmousedown="event.preventDefault()" onclick="commitInlineRename()">
+            <span class="material-icons">check</span>
+          </button>
         </div>
-        <div class="cc-modal-actions">
+        <div class="modal-actions">
           <button class="btn btn-ghost btn-sm" onclick="closeBuilderModal()">Cancel</button>
+          <button class="btn btn-danger btn-sm" id="builder-delete-btn" onclick="deleteActiveRow()" style="display:none;">
+            <span class="material-icons">delete</span>
+            Delete
+          </button>
           <button class="btn btn-primary btn-sm" id="builder-save-btn" onclick="saveActiveRow()">Save Row</button>
         </div>
       </div>
-
-      <!-- Setup screen (new rows only) -->
-      <div class="builder-setup" id="builder-setup">
-        <div class="builder-setup-inner">
-          <div class="builder-setup-title">What kind of row?</div>
-          <div class="builder-setup-desc">Give it a name and pick a type to get started.</div>
-          <input class="form-input builder-setup-name" id="builder-setup-name" placeholder="Row name…"
-            onkeydown="if(event.key==='Enter')commitBuilderSetup()" />
-          <div class="builder-type-grid">
-            <button class="builder-type-btn active" data-type="movie" onclick="selectBuilderType('movie')">
-              <span class="material-icons">movie</span>
-              <span>Movies</span>
-            </button>
-            <button class="builder-type-btn" data-type="series" onclick="selectBuilderType('series')">
-              <span class="material-icons">tv</span>
-              <span>Series</span>
-            </button>
-            <button class="builder-type-btn" data-type="tv" onclick="selectBuilderType('tv')">
-              <span class="material-icons">live_tv</span>
-              <span>TV Channels</span>
-            </button>
+      
+      <div class="modal-body">
+        <!-- Builder Setup Screen -->
+        <div class="builder-setup" id="builder-setup">
+          <div class="builder-setup-content">
+            <div class="builder-setup-title">What kind of row?</div>
+            <div class="builder-setup-desc">Give it a name and pick a type to get started.</div>
+            <input class="form-input" id="builder-setup-name" placeholder="Row name…" 
+              onkeydown="if(event.key==='Enter')commitBuilderSetup()">
+            <div class="builder-type-grid">
+              <button class="builder-type-card active" data-type="movie" onclick="selectBuilderType('movie')">
+                <span class="material-icons">movie</span>
+                <span>Movies</span>
+              </button>
+              <button class="builder-type-card" data-type="series" onclick="selectBuilderType('series')">
+                <span class="material-icons">tv</span>
+                <span>Series</span>
+              </button>
+              <button class="builder-type-card" data-type="tv" onclick="selectBuilderType('tv')">
+                <span class="material-icons">live_tv</span>
+                <span>TV Channels</span>
+              </button>
+            </div>
+            <button class="btn btn-primary" style="width:100%;" onclick="commitBuilderSetup()">Continue</button>
           </div>
-          <button class="btn btn-primary" style="width:100%;justify-content:center;padding:10px 0;" onclick="commitBuilderSetup()">Continue</button>
         </div>
-      </div>
-
-      <div class="cc-modal-body" id="builder-editor" style="display:none;">
-
-        <!-- Row items zone -->
-        <div class="cc-sources-zone">
-          <div id="row-items-list" class="builder-items-drop"></div>
-        </div>
-
-        <!-- Movie/Series Toolbar -->
-        <div class="cc-toolbar" id="builder-toolbar-movie">
-          <div class="search-wrap">
-            <span class="search-icon" style="font-size:13px;">🔍</span>
-            <input class="search-input" id="movie-search" type="search" placeholder="Search…" oninput="onMovieSearch()" />
+        
+        <!-- Builder Editor -->
+        <div class="builder-editor" id="builder-editor" style="display:none;">
+          <!-- Row Items Zone -->
+          <div class="builder-sources-zone">
+            <div class="builder-zone-label">Row Items</div>
+            <div id="row-items-list" class="builder-items-container"></div>
           </div>
-          <select class="form-input cc-select" id="movie-catalog" onchange="onCatalogChange()"></select>
-          <select class="form-input cc-select" id="movie-genre" onchange="onGenreChange()"></select>
-        </div>
-
-        <!-- TV Toolbar (populated dynamically) -->
-        <div class="cc-toolbar" id="builder-toolbar-tv" style="display:none;"></div>
-
-        <!-- Browse grid -->
-        <div class="cc-channel-scroll" id="builder-left-pane">
-          <div id="discovery-movies" style="display:none;">
-            <div class="poster-grid" id="movie-grid">
-              <div class="empty" style="grid-column:1/-1">
-                <div class="empty-icon">🎬</div>
-                <div class="empty-text">Select a type to browse.</div>
-              </div>
+          
+          <!-- Toolbar -->
+          <div class="builder-toolbar" id="builder-toolbar-movie">
+            <div class="search-wrapper">
+              <span class="material-icons search-icon">search</span>
+              <input class="search-input" id="movie-search" type="search" placeholder="Search…" oninput="onMovieSearch()">
+            </div>
+            <select class="form-select" id="movie-catalog" onchange="onCatalogChange()"></select>
+            <select class="form-select" id="movie-genre" onchange="onGenreChange()"></select>
+          </div>
+          
+          <div class="builder-toolbar" id="builder-toolbar-tv" style="display:none;"></div>
+          
+          <!-- Browse Area -->
+          <div class="builder-browse" id="builder-left-pane">
+            <div id="discovery-movies" style="display:none;">
+              <div class="poster-grid" id="movie-grid"></div>
+            </div>
+            <div id="discovery-tv" style="display:none;">
+              <div id="tv-body"></div>
             </div>
           </div>
-          <div id="discovery-tv" style="display:none;">
-            <div id="tv-body"></div>
-          </div>
         </div>
-
       </div>
     </div>
   </div>
-
-  <!-- CUSTOM CHANNEL MODAL -->
+  
+  <!-- Custom Channel Modal -->
   <div class="modal-overlay" id="custom-channel-modal">
-    <div class="modal builder cc-modal">
-      <div class="cc-modal-header">
-        <span class="cc-modal-title" id="cc-modal-title">Edit Sources</span>
-        <div class="cc-modal-actions">
+    <div class="modal modal-large">
+      <div class="modal-header">
+        <!-- Editable Title -->
+        <div class="modal-title-edit" id="cc-title-edit-area">
+          <span class="modal-title editable-title" id="cc-modal-title-display" onclick="ccStartEditTitle()">
+            Edit Sources
+            <span class="material-icons" style="font-size: 20px; opacity: 0.7;">edit</span>
+          </span>
+          <input class="modal-title-input" id="cc-modal-title-input" type="text" style="display:none;" 
+            onkeydown="if(event.key==='Enter')ccConfirmEditTitle();if(event.key==='Escape')ccCancelEditTitle()" 
+            onblur="ccConfirmEditTitle()" />
+          <button class="btn-title-confirm" id="cc-title-confirm-btn" style="display:none;" onclick="ccConfirmEditTitle()">
+            <span class="material-icons">check</span>
+          </button>
+        </div>
+        <div class="modal-actions">
           <button class="btn btn-ghost btn-sm" onclick="closeCCModal()">Cancel</button>
+          <button class="btn btn-danger btn-sm" id="cc-delete-btn" onclick="deleteActiveCustomChannel()" style="display:none;">
+            <span class="material-icons">delete</span>
+            Delete
+          </button>
           <button class="btn btn-primary btn-sm" onclick="saveCustomChannel()">Save</button>
         </div>
       </div>
-
-      <div class="cc-modal-body">
-
-        <!-- Sources zone -->
-        <div class="cc-sources-zone">
-          <div class="cc-zone-label">
-            Sources
-            <span class="cc-zone-hint" id="cc-sources-hint">click channels below to add</span>
+      
+      <div class="modal-body">
+        <!-- Logo and Sources Row -->
+        <div class="cc-layout-row">
+          <!-- Logo Panel (Left) -->
+          <div class="cc-logo-panel">
+            <div class="cc-logo-header">Logo</div>
+            <div class="cc-logo-content">
+              <div class="channel-logo-container modal-logo" id="cc-modal-logo-wrap"
+                ondragover="event.preventDefault();this.classList.add('drag-over')"
+                ondragleave="this.classList.remove('drag-over')"
+                ondrop="event.stopPropagation();ccOnLogoDrop(event)">
+                <img class="channel-logo" id="cc-modal-logo-preview" src="" style="object-fit:contain;display:none;" />
+                <span id="cc-modal-logo-placeholder"><span class="material-icons" style="font-size:48px;color:var(--color-text-disabled);">live_tv</span></span>
+              </div>
+              <input type="file" id="cc-modal-file-input" accept="image/*" style="display:none;" onchange="ccOnLogoFile(event)" />
+              <input type="hidden" id="cc-modal-logo-value" value="" />
+              <input type="hidden" id="cc-modal-mode-value" value="fit" />
+              <input type="hidden" id="cc-modal-raw-logo" value="" />
+              
+              <!-- Logo Controls (Right of Image) -->
+              <div class="cc-logo-controls">
+                <button class="logo-control-btn upload" onclick="document.getElementById('cc-modal-file-input').click()" title="Upload logo">
+                  <span class="material-icons">upload</span>
+                  <span>Upload</span>
+                </button>
+                <div class="logo-mode-toggle">
+                  <button class="mode-btn fit active" onclick="ccSetLogoMode('fit')" title="Fit">
+                    <span class="material-icons">fit_screen</span>
+                  </button>
+                  <button class="mode-btn fill" onclick="ccSetLogoMode('fill')" title="Fill">
+                    <span class="material-icons">aspect_ratio</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-          <div id="cc-sources-list" class="cc-sources-drop"></div>
+          
+          <!-- Sources Panel (Right) -->
+          <div class="cc-sources-panel">
+            <div class="cc-zone-header">
+              <div class="cc-zone-label">Sources</div>
+              <div class="cc-zone-hint" id="cc-sources-hint">click channels below to add</div>
+            </div>
+            <div id="cc-sources-list" class="cc-sources-container"></div>
+          </div>
         </div>
-
+        
         <!-- Toolbar -->
-        <div class="cc-toolbar">
-          <div class="search-wrap">
-            <span class="search-icon" style="font-size:13px;">🔍</span>
-            <input class="search-input" id="cc-search" type="search" placeholder="Search channels…" oninput="filterCCChannels()" />
+        <div class="builder-toolbar">
+          <div class="search-wrapper">
+            <span class="material-icons search-icon">search</span>
+            <input class="search-input" id="cc-search" type="search" placeholder="Search channels…" oninput="filterCCChannels()">
           </div>
-          <select class="form-input cc-select" id="cc-addon-select" onchange="onCCAddonChange()">
+          <select class="form-select" id="cc-addon-select" onchange="onCCAddonChange()">
             <option value="">All Addons</option>
           </select>
-          <select class="form-input cc-select" id="cc-genre-select" onchange="onCCGenreChange()">
+          <select class="form-select" id="cc-genre-select" onchange="onCCGenreChange()">
             <option value="">All Genres</option>
           </select>
         </div>
-
-        <!-- Channel grid -->
-        <div class="cc-channel-scroll">
-          <div class="cc-status" id="cc-load-status"></div>
+        
+        <!-- Browse Area -->
+        <div class="builder-browse">
+          <div class="builder-status" id="cc-load-status"></div>
           <div id="cc-grid"></div>
         </div>
-
       </div>
     </div>
   </div>
-
-  <!-- STREMIO LOGIN MODAL -->
-  <div class="modal-overlay" id="stremio-login-modal">
-    <div class="modal" id="account-modal-content" style="width:340px">
-      <!-- Content dynamic via JS -->
+  
+  <!-- Install Modal -->
+  <div class="modal-overlay" id="install-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Install StremiRow</h3>
+      </div>
+      
+      <div class="modal-body">
+        <p style="color: var(--color-text-secondary); margin-bottom: var(--space-5);">
+          Follow these steps to add StremiRow to your Stremio library.
+        </p>
+        
+        <div class="install-steps">
+          <div class="install-step">
+            <div class="step-number">1</div>
+            <div class="step-content">
+              <h4 class="step-title">Configure your rows</h4>
+              <p class="step-text">Add your favorite movies, series, or TV channels.</p>
+            </div>
+          </div>
+          
+          <div class="install-step">
+            <div class="step-number">2</div>
+            <div class="step-content">
+              <h4 class="step-title">Copy Manifest URL</h4>
+              <p class="step-text">Copy the URL below containing your configuration.</p>
+              <div class="url-copy-group">
+                <input class="form-input" id="set-install-url" readonly style="font-family: var(--font-mono); font-size: 11px;">
+                <button class="btn btn-secondary" onclick="copyInstallUrl()">Copy</button>
+              </div>
+            </div>
+          </div>
+          
+          <div class="install-step">
+            <div class="step-number">3</div>
+            <div class="step-content">
+              <h4 class="step-title">Add to Stremio</h4>
+              <p class="step-text">Open Stremio, go to Addons, click Add Addon (+), and paste the URL.</p>
+              <button class="btn btn-primary" onclick="installStremio()">
+                <span class="material-icons">open_in_new</span>
+                Install to Stremio
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="install-tip">
+          <span class="material-icons">info</span>
+          <p><strong>Tip:</strong> Use the Sync button to update your rows in Stremio without reinstalling.</p>
+        </div>
+        
+        <div id="a1x-section" class="a1x-card" style="display: none;">
+          <h4 class="a1x-title">A1X IPTV</h4>
+          <p class="a1x-desc">Live TV — Sports, Entertainment and News. Install as a separate addon.</p>
+          <div class="url-copy-group">
+            <input class="form-input" id="a1x-install-url" readonly style="font-family: var(--font-mono); font-size: 11px;">
+            <button class="btn btn-secondary" onclick="copyA1xUrl()">Copy</button>
+          </div>
+          <button class="btn btn-primary" onclick="installA1x()">
+            <span class="material-icons">open_in_new</span>
+            Install A1X to Stremio
+          </button>
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal('install-modal')">Close</button>
+      </div>
     </div>
   </div>
-
-  <div id="toast"></div>
-
-  <script src="/admin-ui.js"></script>
+  
+  <!-- Login Modal -->
+  <div class="modal-overlay" id="stremio-login-modal">
+    <div class="modal">
+      <div id="account-modal-content">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+  </div>
+  
+  <!-- Toast Notification -->
+  <div class="toast" id="toast"></div>
+  
+  <!-- Scripts -->
+  <script src="/admin-ui-core.js"></script>
+  <script src="/admin-ui-rows.js"></script>
+  <script src="/admin-ui-movies.js"></script>
+  <script src="/admin-ui-tv.js"></script>
+  <script src="/admin-ui-channels.js"></script>
+  <script src="/admin-ui-auth.js"></script>
+  
 </body>
-
 </html>

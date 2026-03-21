@@ -67,12 +67,22 @@ function registerHandlers(builder, configProvider) {
     // ── Stream handler for custom channels ────────────────────────────────────
     builder.defineStreamHandler(async function ({ id }) {
         if (!id.startsWith('stremirow-')) return { streams: [] };
-        const { rows } = configProvider();
+        const config = configProvider();
+        const { rows } = config;
         let sources = [];
+        
         for (const row of rows) {
             const item = (row.items || []).find(i => i.id === id);
             if (item && Array.isArray(item.sources)) { sources = item.sources; break; }
         }
+        
+        if (!sources.length && config._orphanCustomChannels) {
+            const orphan = config._orphanCustomChannels.find(i => i.id === id);
+            if (orphan && Array.isArray(orphan.sources)) {
+                sources = orphan.sources;
+            }
+        }
+        
         if (!sources.length) return { streams: [] };
 
         const streams = [];

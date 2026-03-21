@@ -126,30 +126,17 @@ async function init() {
     
     // Only load and render content if logged in
     if (sidebarAuthStatus && sidebarAuthStatus.loggedIn) {
-      // Try to load from localStorage first
-      const savedData = localStorage.getItem('stremirow-config');
-      if (savedData) {
-        try {
-          const parsed = JSON.parse(savedData);
-          // Check if expired
-          if (parsed.expiresAt && Date.now() < parsed.expiresAt) {
-            config = parsed.config;
-            console.log('✅ Loaded config from browser storage');
-          } else {
-            console.log('⚠️ Browser storage expired, loading from server');
-            localStorage.removeItem('stremirow-config');
-            const c = await fetch(`/api/config${getUserParam()}`).then(r => r.json());
-            config = c;
-          }
-        } catch (e) {
-          console.error('Failed to parse saved config:', e);
-          const c = await fetch(`/api/config${getUserParam()}`).then(r => r.json());
-          config = c;
-        }
-      } else {
-        const c = await fetch(`/api/config${getUserParam()}`).then(r => r.json());
-        config = c;
-      }
+      // Always load from server first to avoid stale localStorage data
+      const c = await fetch(`/api/config${getUserParam()}`).then(r => r.json());
+      config = c;
+      
+      // Save to localStorage for offline access
+      const configData = {
+        config: config,
+        timestamp: Date.now(),
+        expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000)
+      };
+      localStorage.setItem('stremirow-config', JSON.stringify(configData));
       
       // Load orphan custom channels from config
       if (config._orphanCustomChannels) {

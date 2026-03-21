@@ -92,10 +92,16 @@ function newCustomChannel() {
   const id = 'stremirow-new-' + Date.now();
   const item = { id, type: 'tv', title: 'New Channel', thumbnail: '', description: '', sources: [] };
   
-  if (!window._orphanCustomChannels) window._orphanCustomChannels = [];
-  window._orphanCustomChannels.push(item);
+  // Find or create the "Custom Channels" row
+  let ccRow = config.rows.find(r => r.id === 'custom-channels');
+  if (!ccRow) {
+    ccRow = { id: 'custom-channels', name: 'Custom Channels', contentType: 'tv', items: [] };
+    config.rows.push(ccRow);
+  }
+  ccRow.items.push(item);
   
   renderCustomChannelsPanel();
+  renderRows();
   ccIsNew = true;
   openCustomChannelModalById(id);
 }
@@ -350,8 +356,14 @@ function saveCustomChannel() {
   const titleInput = document.getElementById('cc-modal-title-input');
   const newTitle = titleInput ? titleInput.value.trim() : item.title;
   
-  item.title = newTitle || item.title;
-  item.sources = ccSources;
+  // Use primary source name if title is still "New Channel"
+  if (!newTitle || newTitle === 'New Channel') {
+    item.title = ccSources[0]?.channelName || 'New Channel';
+  } else {
+    item.title = newTitle;
+  }
+  
+  item.sources = JSON.parse(JSON.stringify(ccSources));
   
   const logoInput = document.getElementById('cc-modal-logo-value');
   const modeInput = document.getElementById('cc-modal-mode-value');

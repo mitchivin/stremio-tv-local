@@ -9,7 +9,16 @@ function renderRows() {
   
   const TYPE_ICONS = { movie: 'movie', series: 'tv', tv: 'live_tv' };
   
-  el.innerHTML = `<div class="channels-grid">${config.rows.map((row, i) => {
+  // Filter out the auto-created "Custom Channels" row from display
+  const visibleRows = config.rows.filter(row => row.id !== 'custom-channels');
+  
+  if (!visibleRows.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon"><span class="material-icons">view_list</span></div><div class="empty-title">No rows yet</div><div class="empty-text">Add one to get started</div></div>';
+    return;
+  }
+  
+  el.innerHTML = `<div class="channels-grid">${visibleRows.map((row, i) => {
+    const actualIndex = config.rows.indexOf(row);
     const count = (row.items || []).length;
     const ct = row.contentType || 'movie';
     const icon = TYPE_ICONS[ct] || 'movie';
@@ -32,9 +41,9 @@ function renderRows() {
     }
     
     return `
-      <div class="channel-card" id="rc-${i}" draggable="true"
-        ondragstart="dragStart(${i})" ondragover="dragOver(event,${i})"
-        ondrop="drop(event,${i})" ondragleave="dragLeave(event)">
+      <div class="channel-card" id="rc-${actualIndex}" draggable="true"
+        ondragstart="dragStart(${actualIndex})" ondragover="dragOver(event,${actualIndex})"
+        ondrop="drop(event,${actualIndex})" ondragleave="dragLeave(event)">
         <div class="channel-logo-container">
           ${thumbnailHtml}
         </div>
@@ -42,7 +51,7 @@ function renderRows() {
           <div class="channel-name">${esc(row.name)}</div>
           <div class="channel-actions">
             <span class="channel-source-count">${count}</span>
-            <button class="btn btn-ghost btn-sm channel-edit-btn" onclick="openBuilderModal(${i})">Edit</button>
+            <button class="btn btn-ghost btn-sm channel-edit-btn" onclick="openBuilderModal(${actualIndex})">Edit</button>
           </div>
         </div>
       </div>`;

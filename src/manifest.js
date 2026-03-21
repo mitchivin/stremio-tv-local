@@ -14,18 +14,21 @@ const CONTENT_TYPES = ['movie', 'series', 'tv'];
 
 function buildManifest(addonMeta, rows) {
     // Each row becomes one catalog entry.
-    const catalogs = rows.map(row => {
-        const type = row.contentType || 'movie';
-        const posterShape = type === 'tv' ? 'square' : 'poster';
+    // Filter out the auto-generated "Custom Channels" row
+    const catalogs = rows
+        .filter(row => row.id !== 'custom-channels')
+        .map(row => {
+            const type = row.contentType || 'movie';
+            const posterShape = type === 'tv' ? 'square' : 'poster';
 
-        return {
-            id: row.id,
-            type,
-            name: row.name,
-            posterShape,
-            extra: [{ name: 'skip', isRequired: false }],
-        };
-    });
+            return {
+                id: row.id,
+                type,
+                name: row.name,
+                posterShape,
+                extra: [{ name: 'skip', isRequired: false }],
+            };
+        });
 
     // We always declare 'catalog' and all content types
     // so the SDK doesn't crash if they are missing at boot.

@@ -142,7 +142,15 @@ function populateTVAddonDropdown() {
     opt.textContent = a.manifest.name;
     addonSel.appendChild(opt);
   });
-  if (getAllCustomChannels().length) {
+  
+  // Always show Custom Channels option if any exist (in rows OR orphans)
+  const allCustomChannels = [
+    ...config.rows.flatMap(r => (r.items || []).filter(i => i.id && i.id.startsWith('stremirow-'))),
+    ...(window._orphanCustomChannels || [])
+  ];
+  const uniqueCustomChannels = [...new Map(allCustomChannels.map(ch => [ch.id, ch])).values()];
+  
+  if (uniqueCustomChannels.length) {
     const opt = document.createElement('option');
     opt.value = '__custom__';
     opt.textContent = 'Custom Channels';

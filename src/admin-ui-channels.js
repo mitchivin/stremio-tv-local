@@ -113,7 +113,13 @@ async function openCustomChannelModalById(id) {
     item = window._orphanCustomChannels.find(i => i.id === id);
   }
   
-  if (item) await openCustomChannelModal(item);
+  if (!item) {
+    console.error('Custom channel not found:', id);
+    toast('Channel not found. Try refreshing the page.', 'error');
+    return;
+  }
+  
+  await openCustomChannelModal(item);
 }
 
 function closeCCModal() {

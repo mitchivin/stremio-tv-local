@@ -142,6 +142,22 @@ async function syncStremio() {
     const r = await fetch(`/api/stremio/sync${getUserParam()}`, { method: 'POST' });
     const d = await r.json();
     if (d.error) throw new Error(d.error);
+    
+    // Reload config from server after sync
+    const c = await fetch(`/api/config${getUserParam()}`).then(r => r.json());
+    config = c;
+    
+    // Update orphan custom channels
+    if (config._orphanCustomChannels) {
+      window._orphanCustomChannels = config._orphanCustomChannels;
+    } else {
+      window._orphanCustomChannels = [];
+    }
+    
+    // Re-render panels with fresh data
+    renderRows();
+    renderCustomChannelsPanel();
+    
     if (btn) btn.className = 'floating-action-btn btn-primary success';
     if (textEl) textEl.textContent = 'Synced!';
     setTimeout(() => {

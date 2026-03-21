@@ -323,7 +323,20 @@ function saveActiveRow() {
   const name = input ? input.value.trim() : '';
   if (!name) { toast('Please enter a row name', 'error'); startInlineRename(); return; }
   const contentType = _builderType;
-  const rowId = editingRowIdx >= 0 ? config.rows[editingRowIdx].id : (slugify(name) || 'row-' + Date.now());
+  
+  // Generate unique row ID
+  let rowId;
+  if (editingRowIdx >= 0) {
+    rowId = config.rows[editingRowIdx].id;
+  } else {
+    rowId = slugify(name) || 'row-' + Date.now();
+    // Ensure uniqueness
+    const existingIds = new Set(config.rows.map(r => r.id));
+    if (existingIds.has(rowId)) {
+      rowId = rowId + '-' + Date.now();
+    }
+  }
+  
   const row = { id: rowId, name, contentType, items: tempRowItems };
   
   // Move orphan custom channels into this row

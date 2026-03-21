@@ -74,10 +74,14 @@ function mountAdmin(app, onReload) {
             const userId = req.query.userId || null;
             if (!cfg || !cfg.addon || !Array.isArray(cfg.rows))
                 return res.status(400).json({ error: 'Invalid config shape' });
+            console.log('💾 Saving config for user:', userId, 'with', cfg.rows.length, 'rows');
             await storage.saveConfig(cfg, userId);
             if (onReload) await onReload();
             res.json({ ok: true, rows: cfg.rows.length });
-        } catch (e) { res.status(500).json({ error: e.message }); }
+        } catch (e) { 
+            console.error('❌ Config save error:', e.message, e.stack);
+            res.status(500).json({ error: e.message }); 
+        }
     });
 
     app.get('/api/stremio/status', async (req, res) => {

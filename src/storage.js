@@ -65,7 +65,16 @@ async function loadConfig(userId = null) {
         try {
             const gist = await fetchGist();
             if (gist.files && gist.files[filename]) {
-                return normalizeConfig(JSON.parse(gist.files[filename].content));
+                const fileData = gist.files[filename];
+                let content = fileData.content;
+                
+                // If file is truncated, fetch from raw_url
+                if (fileData.truncated && fileData.raw_url) {
+                    console.log(`📥 Config file is truncated, fetching from raw_url`);
+                    content = await fetchRawUrl(fileData.raw_url);
+                }
+                
+                return normalizeConfig(JSON.parse(content));
             }
             console.log(`⚠️  ${filename} not found in Gist, returning default.`);
         } catch (e) {
@@ -119,7 +128,35 @@ async function loadAuth(userId = null) {
         try {
             const gist = await fetchGist();
             if (gist.files && gist.files[filename]) {
-                return normalizeAuth(JSON.parse(gist.files[filename].content));
+                const fileData = gist.files[filename];
+                let content = fileData.content;
+                
+                // If file is truncated, fetch from raw_url
+                if (fileData.truncated && fileData.raw_url) {
+                    console.log(`📥 File is truncated, fetching from raw_url: ${filename}`);
+                    content = await fetchRawUrl(fileData.raw_url);
+                }
+                
+                // Handle empty or whitespace-only content
+                if (!content || !content.trim()) {
+                    console.log(`⚠️  ${filename} is empty in Gist, deleting it`);
+                    try {
+                        await updateGist({ [filename]: null });
+                        console.log(`🧹 Deleted empty auth file: ${filename}`);
+                    } catch (deleteErr) {
+                        console.error(`Failed to delete empty auth: ${deleteErr.message}`);
+                    }
+                    return null;
+                }
+                
+                try {
+                    return normalizeAuth(JSON.parse(content));
+                } catch (parseErr) {
+                    console.error(`❌ Failed to parse ${filename}: ${parseErr.message}`);
+                    console.log(`🧹 Clearing corrupted auth file: ${filename}`);
+                    await updateGist({ [filename]: null }).catch(e => console.error('Failed to clear corrupted auth:', e.message));
+                    return null;
+                }
             }
         } catch (e) {
             console.error(`❌ Gist auth load error: ${e.message}`);
@@ -128,7 +165,11 @@ async function loadAuth(userId = null) {
     }
 
     const localPath = userId ? path.join(ROOT, `${userId}-auth.json`) : LOCAL_AUTH;
-    try { return normalizeAuth(JSON.parse(fs.readFileSync(localPath, 'utf8'))); }
+    try { 
+        const content = fs.readFileSync(localPath, 'utf8');
+        if (!content || !content.trim()) return null;
+        return normalizeAuth(JSON.parse(content)); 
+    }
     catch (_) { return null; }
 }
 
@@ -141,11 +182,36 @@ async function saveAuth(data, userId = null) {
 
     if (GIST_ID && GH_TOKEN) {
         console.log(`☁️  Saving auth to Gist: ${filename}`);
-        return updateGist({ [filename]: { content: json } });
+        console.log(`📝 Auth data being saved:`, { email: data?.email, hasAuthKey: !!data?.authKey, jsonLength: json.length });
+        const result = await updateGist({ [filename]: { content: json } });
+        console.log(`✅ Auth saved successfully to Gist: ${filename}`);
+        
+        // Wait a moment for Gist to propagate
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Verify the save by reading it back
+        try {
+            const gist = await fetchGist();
+            if (gist.files && gist.files[filename]) {
+                const savedContent = gist.files[filename].content;
+                if (!savedContent || !savedContent.trim()) {
+                    console.error(`❌ VERIFICATION FAILED: Auth file is empty after save!`);
+                } else {
+                    console.log(`✅ Verification passed: Auth file has ${savedContent.length} characters`);
+                }
+            } else {
+                console.error(`❌ VERIFICATION FAILED: Auth file not found after save!`);
+            }
+        } catch (verifyErr) {
+            console.error(`⚠️  Could not verify save: ${verifyErr.message}`);
+        }
+        
+        return result;
     }
 
     const localPath = userId ? path.join(ROOT, `${userId}-auth.json`) : LOCAL_AUTH;
     fs.writeFileSync(localPath, json, 'utf8');
+    console.log(`✅ Auth saved locally: ${localPath}`);
 }
 
 /**
@@ -164,6 +230,27 @@ async function clearAuth(userId = null) {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+function fetchRawUrl(url) {
+    return new Promise((resolve, reject) => {
+        https.get(url, {
+            headers: {
+                'User-Agent': 'stremio-row-factory',
+                'Authorization': `Bearer ${GH_TOKEN}`
+            }
+        }, (res) => {
+            let body = '';
+            res.on('data', d => body += d);
+            res.on('end', () => {
+                if (res.statusCode === 200) {
+                    resolve(body);
+                } else {
+                    reject(new Error(`Failed to fetch raw URL: ${res.statusCode}`));
+                }
+            });
+        }).on('error', reject);
+    });
+}
 
 function fetchGist() {
     return new Promise((resolve, reject) => {
@@ -188,7 +275,20 @@ function fetchGist() {
                     return reject(new Error(`GitHub API Error: ${status}`));
                 }
 
-                try { resolve(JSON.parse(body)); }
+                try { 
+                    const parsed = JSON.parse(body);
+                    // Log file names and their content lengths
+                    if (parsed.files) {
+                        const fileInfo = Object.keys(parsed.files).map(name => ({
+                            name,
+                            size: parsed.files[name].size,
+                            contentLength: parsed.files[name].content?.length || 0,
+                            truncated: parsed.files[name].truncated
+                        }));
+                        console.log(`📦 Gist files:`, fileInfo);
+                    }
+                    resolve(parsed);
+                }
                 catch (e) { reject(new Error(`Failed to parse GitHub response: ${e.message}`)); }
             });
         });
@@ -200,6 +300,7 @@ function fetchGist() {
 function updateGist(files) {
     return new Promise((resolve, reject) => {
         const payload = JSON.stringify({ files });
+        console.log(`🔍 updateGist payload:`, payload.substring(0, 200));
         const options = {
             hostname: 'api.github.com',
             path: `/gists/${GIST_ID}`,
@@ -217,6 +318,7 @@ function updateGist(files) {
             res.on('end', () => {
                 const status = res.statusCode;
                 if (status === 200) {
+                    console.log(`✅ GitHub PATCH response (${status}):`, body.substring(0, 300));
                     resolve({ ok: true });
                 } else {
                     console.error(`GitHub PATCH Error (${status}):`, body);

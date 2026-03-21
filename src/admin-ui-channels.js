@@ -92,13 +92,9 @@ function newCustomChannel() {
   const id = 'stremirow-new-' + Date.now();
   const item = { id, type: 'tv', title: 'New Channel', thumbnail: '', description: '', sources: [] };
   
-  // Find or create the "Custom Channels" row
-  let ccRow = config.rows.find(r => r.id === 'custom-channels');
-  if (!ccRow) {
-    ccRow = { id: 'custom-channels', name: 'Custom Channels', contentType: 'tv', items: [] };
-    config.rows.push(ccRow);
-  }
-  ccRow.items.push(item);
+  // Store in orphan custom channels (not in a row)
+  if (!window._orphanCustomChannels) window._orphanCustomChannels = [];
+  window._orphanCustomChannels.push(item);
   
   renderCustomChannelsPanel();
   renderRows();

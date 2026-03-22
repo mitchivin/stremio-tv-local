@@ -537,44 +537,23 @@ async function selectLogo(filename) {
   }
 
   if (channel) {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = function () {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      const rawDataUrl = canvas.toDataURL('image/png');
+    // For local logos, skip canvas processing — just store the URL directly
+    channel._rawLogo = `/logos/${filename}`;
+    channel._logoMode = 'fit';
+    channel.thumbnail = `/logos/${filename}`;
 
-      channel._rawLogo = rawDataUrl;
-      channel._logoMode = 'fit';
-      channel.thumbnail = processLogoWithMode(img, 'fit');
-
-      markDirty();
-      if (builderOpen) {
-        renderRowItems();
-      } else {
-        const logoInput = document.getElementById('cc-modal-logo-value');
-        if (logoInput) logoInput.value = channel.thumbnail;
-        renderCustomChannelsPanel();
-        document.querySelectorAll('.mode-btn').forEach((b) => b.classList.remove('mode-disabled'));
-      }
-      toast('Logo updated', 'success');
-    };
-    img.onerror = function () {
-      channel.thumbnail = `/logos/${filename}`;
-      channel._logoMode = 'fit';
-      delete channel._rawLogo;
-      markDirty();
-      if (builderOpen) {
-        renderRowItems();
-      } else {
-        renderCustomChannelsPanel();
-      }
-      toast('Logo updated', 'success');
-    };
-    img.src = `/logos/${filename}`;
+    markDirty();
+    if (builderOpen) {
+      renderRowItems();
+    } else {
+      const logoInput = document.getElementById('cc-modal-logo-value');
+      if (logoInput) logoInput.value = channel.thumbnail;
+      const rawLogoInput = document.getElementById('cc-modal-raw-logo');
+      if (rawLogoInput) rawLogoInput.value = channel._rawLogo;
+      renderCustomChannelsPanel();
+      document.querySelectorAll('.mode-btn').forEach((b) => b.classList.remove('mode-disabled'));
+    }
+    toast('Logo updated', 'success');
   }
 
   closeLogoPicker();

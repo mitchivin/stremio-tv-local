@@ -214,28 +214,32 @@ async function clearAuth(userId = null) {
 
 function fetchRawUrl(url) {
   return new Promise((resolve, reject) => {
-    https
-      .get(
-        url,
-        {
-          headers: {
-            'User-Agent': 'stremio-row-factory',
-            Authorization: `Bearer ${GH_TOKEN}`,
-          },
+    const req = https.get(
+      url,
+      {
+        headers: {
+          'User-Agent': 'stremio-row-factory',
+          Authorization: `Bearer ${GH_TOKEN}`,
         },
-        (res) => {
-          let body = '';
-          res.on('data', (d) => (body += d));
-          res.on('end', () => {
-            if (res.statusCode === 200) {
-              resolve(body);
-            } else {
-              reject(new Error(`Failed to fetch raw URL: ${res.statusCode}`));
-            }
-          });
-        }
-      )
-      .on('error', reject);
+        timeout: 10000,
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (d) => (body += d));
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            resolve(body);
+          } else {
+            reject(new Error(`Failed to fetch raw URL: ${res.statusCode}`));
+          }
+        });
+      }
+    );
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('fetchRawUrl timed out after 10s'));
+    });
+    req.on('error', reject);
   });
 }
 
@@ -249,6 +253,7 @@ function fetchGist() {
         'User-Agent': 'stremio-row-factory',
         Authorization: `Bearer ${GH_TOKEN}`,
       },
+      timeout: 10000,
     };
     const req = https.request(options, (res) => {
       let body = '';
@@ -277,6 +282,10 @@ function fetchGist() {
         }
       });
     });
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('fetchGist timed out after 10s'));
+    });
     req.on('error', reject);
     req.end();
   });
@@ -295,6 +304,7 @@ function updateGist(files) {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(payload),
       },
+      timeout: 10000,
     };
     const req = https.request(options, (res) => {
       let body = '';
@@ -318,6 +328,10 @@ function updateGist(files) {
           else reject(new Error(`GitHub PATCH failed: ${status}`));
         }
       });
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('updateGist timed out after 10s'));
     });
     req.on('error', reject);
     req.write(payload);

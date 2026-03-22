@@ -170,14 +170,10 @@ function mountAdmin(app, onReload) {
       const freshConfig = await storage.loadConfig(userId);
       const freshManifest = buildManifest(freshConfig.addon, freshConfig.rows);
 
-      // Stamp a cache-bust token onto each catalog ID in the manifest we push to Stremio.
-      // Stremio caches home-screen rows by catalog ID — changing the ID forces a re-fetch.
-      // The catalog handler on our server strips the suffix when matching rows.
-      const token = Date.now().toString(36);
-      freshManifest.catalogs = freshManifest.catalogs.map((c) => ({
-        ...c,
-        id: `${c.id}__v${token}`,
-      }));
+      // Bump version to force Stremio to treat this as a new manifest.
+      // Do NOT mutate catalog IDs — that causes rows to vanish when Stremio
+      // re-fetches /manifest.json and gets the original (un-suffixed) IDs.
+      freshManifest.version = `1.0.${Date.now()}`;
 
       const ourAddon = addons[ourAddonIndex];
       addons[ourAddonIndex] = {

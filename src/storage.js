@@ -21,7 +21,7 @@ const GH_TOKEN = (process.env.GH_TOKEN || '').trim();
 // Also serves as a short-term cache across warm invocations on Vercel
 let _gistCache = null;
 let _gistCacheTime = 0;
-const GIST_CACHE_TTL = 30 * 60 * 1000; // 30 minutes — safe for catalog serving
+const GIST_CACHE_TTL = 60 * 1000; // 1 minute — short enough to pick up saves quickly
 
 function _invalidateGistCache() {
   _gistCache = null;
@@ -77,7 +77,7 @@ function generateUserId() {
 
 // Per-user config cache — prevents Gist hammering on every Stremio catalog request
 const _userConfigCache = new Map(); // userId -> { config, time }
-const USER_CONFIG_TTL = 30 * 60 * 1000; // 30 minutes
+const USER_CONFIG_TTL = 60 * 1000; // 1 minute — short enough to pick up saves quickly
 
 /**
  * Load config from Gist or Local file (per-user)

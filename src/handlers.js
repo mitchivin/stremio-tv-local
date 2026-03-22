@@ -45,8 +45,8 @@ function registerHandlers(builder, configProvider) {
     const cfg = configProvider();
     const { rows, baseUrl } = cfg;
 
-    // Strip cache-bust suffix added during sync (e.g. "sport__vk3x9a2" → "sport")
-    const rowId = id.replace(/__v[a-z0-9]+$/, '');
+    // Match row by ID and type
+    const rowId = id;
 
     const row = rows.find((r) => r.id === rowId && (r.contentType || 'movie') === type);
     if (!row || !Array.isArray(row.items)) return Promise.resolve({ metas: [] });

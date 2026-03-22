@@ -30,8 +30,9 @@ function buildManifest(addonMeta, rows) {
       };
     });
 
-  // Use a timestamp-based version so Stremio busts its catalog cache on every save/sync
-  const version = addonMeta.version || `1.0.${Date.now()}`;
+  // Always use a fresh timestamp so Stremio busts its cache on every manifest fetch.
+  // Never use the version baked into addonMeta — that's stale from the last save.
+  const version = `1.0.${Date.now()}`;
 
   return {
     id: 'com.stremirow.custom',

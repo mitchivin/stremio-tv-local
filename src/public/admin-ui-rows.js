@@ -1,4 +1,4 @@
-/* exported renderRows, dragStart, dragOver, dragLeave, drop, deleteRowWithConfirm, deleteAllRows, cancelInlineRename, openBuilderModal, commitBuilderSetup, saveActiveRow, removeItem, onDragStartRowItem, onDragOverRowItem, onDropRowItem, toggleActiveRowItem, selectLogo, startInlineRename, commitInlineRename, cancelInlineRename, openLogoPicker */
+/* exported renderRows, dragStart, dragOver, dragLeave, drop, deleteRowWithConfirm, deleteAllRows, cancelInlineRename, openBuilderModal, commitBuilderSetup, saveActiveRow, removeItem, onDragStartRowItem, onDragOverRowItem, onDropRowItem, toggleActiveRowItem, startInlineRename, commitInlineRename, cancelInlineRename, openLogoPicker */
 // ─── Rows
 function renderRows() {
   const el = document.getElementById('rows-container');

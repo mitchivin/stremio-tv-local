@@ -1,4 +1,4 @@
-/* exported getAllCustomChannels, renderCustomChannelsPanel, confirmDeleteChannel, deleteAllCustomChannels, newCustomChannel, closeCCModal, ccStartEditTitle, ccConfirmEditTitle, ccCancelEditTitle, saveCustomChannel, openLogoPicker, closeLogoPicker, selectLogo, lpSetMode, lpTriggerUpload, lpHandleUpload, lpApplyLogo, lpSelectGridLogo, openScanModal, closeScanModal, toggleScanSelectAll, addSelectedScanChannels, filterScanGrid */
+/* exported getAllCustomChannels, renderCustomChannelsPanel, confirmDeleteChannel, deleteAllCustomChannels, newCustomChannel, closeCCModal, ccStartEditTitle, ccConfirmEditTitle, ccCancelEditTitle, saveCustomChannel, openLogoPicker, closeLogoPicker, lpApplyLogo, lpFilterLogos, lpSetMode, lpSelectLogo, openScanModal, closeScanModal, toggleScanSelectAll, addSelectedScanChannels, filterScanGrid */
 // ─── Custom Channels Panel
 function getAllCustomChannels() {
   const channels = [];
@@ -265,37 +265,6 @@ function ccCancelEditTitle() {
   }
 }
 
-/**
- * Process logo image with specified mode (fit/fill) and transparent background
- * @param {Image} img - The image element to process
- * @param {string} mode - Either 'fit' (with padding) or 'fill' (cover)
- * @returns {string} Base64 PNG data URL
- */
-function processLogoWithMode(img, mode) {
-  const SIZE = 400;
-  const canvas = document.createElement('canvas');
-  canvas.width = SIZE;
-  canvas.height = SIZE;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, SIZE, SIZE);
-
-  if (mode === 'fill') {
-    const scale = Math.max(SIZE / img.width, SIZE / img.height);
-    const w = img.width * scale;
-    const h = img.height * scale;
-    ctx.drawImage(img, (SIZE - w) / 2, (SIZE - h) / 2, w, h);
-  } else {
-    const PADDING = 40;
-    const maxDim = SIZE - PADDING * 2;
-    const scale = Math.min(maxDim / img.width, maxDim / img.height);
-    const w = img.width * scale;
-    const h = img.height * scale;
-    ctx.drawImage(img, (SIZE - w) / 2, (SIZE - h) / 2, w, h);
-  }
-
-  return canvas.toDataURL('image/png');
-}
-
 function saveCustomChannel() {
   if (!ccEditingId) return;
   if (!ccSources.length) {
@@ -360,215 +329,169 @@ function saveCustomChannel() {
   toast('Sources saved', 'success');
 }
 
-// ─── Logo Picker
-let logoPickerCache = null;
-window.logoPickerTargetId = null;
-let _lpSelectedFilename = null; // currently highlighted logo in picker
-let _lpMode = 'fit'; // current mode in picker
-let _lpRawDataUrl = null; // raw data url for upload or selected logo
+// ─── Logo Picker (tv-logo GitHub repo)
+const LP_RAW_BASE = 'https://raw.githubusercontent.com/tv-logo/tv-logos/main/';
+const LP_TREE_URL = 'https://api.github.com/repos/tv-logo/tv-logos/git/trees/main?recursive=1';
+let _lpTreeCache = null;
+let _lpLoadingTree = false;
+let _lpMode = 'fit';
+let _lpSelectedUrl = null;
 
-async function loadLogoPickerCache() {
-  if (logoPickerCache !== null) return logoPickerCache;
+window.logoPickerTargetId = null;
+
+async function _lpLoadTree() {
+  if (_lpTreeCache) return _lpTreeCache;
+  if (_lpLoadingTree) return null;
+  _lpLoadingTree = true;
   try {
-    const response = await fetch('/api/logos/list');
-    const data = await response.json();
-    logoPickerCache = data.logos || [];
+    const res = await fetch(LP_TREE_URL);
+    const data = await res.json();
+    _lpTreeCache = (data.tree || [])
+      .filter((f) => f.type === 'blob' && f.path.endsWith('.png'))
+      .map((f) => ({ path: f.path, url: LP_RAW_BASE + f.path }));
   } catch (e) {
-    console.warn('Failed to load logo picker cache:', e);
-    logoPickerCache = [];
-    toast('Failed to load logos', 'error');
+    console.warn('Failed to load tv-logos tree:', e);
+    _lpTreeCache = [];
   }
-  return logoPickerCache;
+  _lpLoadingTree = false;
+  return _lpTreeCache;
 }
 
-function _lpSetPreview(src) {
-  const img = document.getElementById('lp-preview-img');
-  const ph = document.getElementById('lp-preview-placeholder');
-  if (!src) {
-    if (img) {
-      img.src = '';
-      img.style.display = 'none';
-    }
-    if (ph) ph.style.display = '';
+function _lpRenderGrid(logos) {
+  const grid = document.getElementById('logo-picker-grid');
+  if (!grid) return;
+  if (!logos || !logos.length) {
+    grid.innerHTML =
+      '<div style="grid-column:1/-1;text-align:center;padding:var(--space-6);color:var(--color-text-secondary);">No logos found. Try a different search.</div>';
     return;
   }
-  if (img) {
-    img.src = src;
-    img.style.display = '';
-  }
-  if (ph) ph.style.display = 'none';
+  grid.innerHTML = logos
+    .slice(0, 120)
+    .map(
+      (logo) =>
+        `<div class="logo-picker-item${_lpSelectedUrl === logo.url ? ' selected' : ''}" title="${esc(logo.path)}" onclick="lpSelectLogo('${esc(logo.url)}', this)">
+      <img src="${esc(logo.url)}" alt="${esc(logo.path)}" loading="lazy" style="object-fit:${_lpMode === 'fill' ? 'cover' : 'contain'}" onerror="this.parentElement.style.display='none'" />
+    </div>`
+    )
+    .join('');
 }
 
-function _lpSetApplyEnabled(enabled) {
-  const btn = document.getElementById('lp-apply-btn');
-  if (btn) btn.disabled = !enabled;
+function lpFilterLogos() {
+  if (!_lpTreeCache) return;
+  const q = (document.getElementById('lp-search')?.value || '').toLowerCase().replace(/\s+/g, '-');
+  const filtered = q
+    ? _lpTreeCache.filter((l) => l.path.toLowerCase().includes(q))
+    : _lpTreeCache.slice(0, 120);
+  _lpRenderGrid(filtered);
 }
 
 function lpSetMode(mode) {
   _lpMode = mode;
   document.getElementById('lp-mode-fit')?.classList.toggle('active', mode === 'fit');
   document.getElementById('lp-mode-fill')?.classList.toggle('active', mode === 'fill');
-  // Re-process if we have a raw data url
-  if (_lpRawDataUrl) {
-    const img = new Image();
-    img.onload = function () {
-      const processed = processLogoWithMode(img, mode);
-      _lpSetPreview(processed);
-    };
-    img.src = _lpRawDataUrl;
-  }
+  // Apply object-fit to all grid images in real-time so the user sees the effect
+  document
+    .querySelectorAll('#logo-picker-grid .logo-picker-item img')
+    .forEach((img) => (img.style.objectFit = mode === 'fill' ? 'cover' : 'contain'));
 }
 
-function lpTriggerUpload() {
-  document.getElementById('lp-upload-input')?.click();
-}
-
-function lpHandleUpload(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function (e) {
-    _lpRawDataUrl = e.target.result;
-    _lpSelectedFilename = null;
-    // Deselect any grid item
-    document.querySelectorAll('.logo-picker-item').forEach((el) => el.classList.remove('selected'));
-    const img = new Image();
-    img.onload = function () {
-      const processed = processLogoWithMode(img, _lpMode);
-      _lpSetPreview(processed);
-      _lpSetApplyEnabled(true);
-    };
-    img.src = _lpRawDataUrl;
-  };
-  reader.readAsDataURL(file);
-  // Reset input so same file can be re-selected
-  event.target.value = '';
+function lpSelectLogo(url, el) {
+  _lpSelectedUrl = url;
+  document.querySelectorAll('.logo-picker-item').forEach((i) => i.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('lp-apply-btn').disabled = false;
 }
 
 async function openLogoPicker(channelId, event) {
   event.stopPropagation();
   window.logoPickerTargetId = channelId;
-  _lpSelectedFilename = null;
-  _lpRawDataUrl = null;
+  _lpSelectedUrl = null;
   _lpMode = 'fit';
 
-  // Reset mode buttons
+  const grid = document.getElementById('logo-picker-grid');
+  const searchEl = document.getElementById('lp-search');
+  const applyBtn = document.getElementById('lp-apply-btn');
+  if (searchEl) searchEl.value = '';
+  if (applyBtn) applyBtn.disabled = true;
   document.getElementById('lp-mode-fit')?.classList.add('active');
   document.getElementById('lp-mode-fill')?.classList.remove('active');
-  _lpSetApplyEnabled(false);
-
-  // Populate preview with current channel logo
-  let currentThumb = null;
-  const builderOpen = document.getElementById('builder-modal')?.classList.contains('open');
-  if (builderOpen && typeof tempRowItems !== 'undefined') {
-    const ch = tempRowItems.find((i) => i.id === channelId);
-    if (ch) currentThumb = ch.thumbnail || null;
-  }
-  if (!currentThumb) {
-    for (const row of config.rows) {
-      const ch = (row.items || []).find((i) => i.id === channelId);
-      if (ch) {
-        currentThumb = ch.thumbnail || null;
-        break;
-      }
-    }
-  }
-  if (!currentThumb && window._orphanCustomChannels) {
-    const ch = window._orphanCustomChannels.find((i) => i.id === channelId);
-    if (ch) currentThumb = ch.thumbnail || null;
-  }
-  _lpSetPreview(currentThumb);
-
-  await loadLogoPickerCache();
-
-  const grid = document.getElementById('logo-picker-grid');
-  if (!logoPickerCache.length) {
+  if (grid)
     grid.innerHTML =
-      '<div style="grid-column: 1/-1; text-align: center; padding: var(--space-6); color: var(--color-text-secondary);">No logos found in /logos/ folder</div>';
-  } else {
-    grid.innerHTML = logoPickerCache
-      .map(
-        (filename) =>
-          `<div class="logo-picker-item" onclick="lpSelectGridLogo('${esc(filename)}', this)">
-        <img src="/logos/${esc(filename)}" alt="${esc(filename)}" />
-      </div>`
-      )
-      .join('');
-  }
+      '<div style="grid-column:1/-1;text-align:center;padding:var(--space-6);color:var(--color-text-secondary);">Loading logos…</div>';
 
   document.getElementById('logo-picker-modal').classList.add('open');
+
+  const tree = await _lpLoadTree();
+  if (!tree) return;
+
+  const allItems = [
+    ...(typeof tempRowItems !== 'undefined' ? tempRowItems : []),
+    ...config.rows.flatMap((r) => r.items || []),
+    ...(window._orphanCustomChannels || []),
+  ];
+  const ch = allItems.find((i) => i.id === channelId);
+  let hint = '';
+  if (ch && ch.title) {
+    hint = ch.title.toLowerCase().replace(/\s+/g, '-');
+    if (searchEl) searchEl.value = ch.title;
+  }
+
+  const filtered = hint
+    ? _lpTreeCache.filter((l) => l.path.toLowerCase().includes(hint))
+    : _lpTreeCache.slice(0, 120);
+  _lpRenderGrid(filtered);
 }
 
-function lpSelectGridLogo(filename, el) {
-  _lpSelectedFilename = filename;
-  _lpRawDataUrl = `/logos/${filename}`;
-  // Highlight selected
-  document
-    .querySelectorAll('.logo-picker-item')
-    .forEach((item) => item.classList.remove('selected'));
-  el.classList.add('selected');
-  // Process through current mode so preview always matches
-  const img = new Image();
-  img.onload = function () {
-    _lpSetPreview(processLogoWithMode(img, _lpMode));
-    _lpSetApplyEnabled(true);
-  };
-  img.src = _lpRawDataUrl;
+async function lpApplyLogo() {
+  if (!window.logoPickerTargetId || !_lpSelectedUrl) return;
+
+  // Proxy URL — server fetches + applies fit/fill, returns a stable hosted PNG
+  const proxyUrl = `/api/logos/proxy?mode=${_lpMode}&url=` + encodeURIComponent(_lpSelectedUrl);
+
+  const builderOpen = document.getElementById('builder-modal')?.classList.contains('open');
+
+  // Update tempRowItems if builder is open
+  if (builderOpen && typeof tempRowItems !== 'undefined') {
+    const item = tempRowItems.find((i) => i.id === window.logoPickerTargetId);
+    if (item) {
+      item.thumbnail = proxyUrl;
+      item._rawLogo = _lpSelectedUrl;
+      item._logoMode = _lpMode;
+    }
+  }
+
+  // Always update config.rows and orphans so main cards stay in sync
+  for (const row of config.rows) {
+    const item = (row.items || []).find((i) => i.id === window.logoPickerTargetId);
+    if (item) {
+      item.thumbnail = proxyUrl;
+      item._rawLogo = _lpSelectedUrl;
+      item._logoMode = _lpMode;
+      break;
+    }
+  }
+  if (window._orphanCustomChannels) {
+    const item = window._orphanCustomChannels.find((i) => i.id === window.logoPickerTargetId);
+    if (item) {
+      item.thumbnail = proxyUrl;
+      item._rawLogo = _lpSelectedUrl;
+      item._logoMode = _lpMode;
+    }
+  }
+
+  markDirty();
+  if (builderOpen) renderRowItems();
+  renderRows();
+  renderCustomChannelsPanel();
+  toast('Logo updated', 'success');
+
+  closeLogoPicker();
 }
 
 function closeLogoPicker() {
   document.getElementById('logo-picker-modal').classList.remove('open');
   window.logoPickerTargetId = null;
-  _lpSelectedFilename = null;
-  _lpRawDataUrl = null;
-}
-
-async function lpApplyLogo() {
-  if (!window.logoPickerTargetId || !_lpRawDataUrl) return;
-
-  // Preview is already processed through processLogoWithMode — grab it directly
-  const previewImg = document.getElementById('lp-preview-img');
-  const finalUrl = previewImg?.src || _lpRawDataUrl;
-
-  await selectLogo(finalUrl, _lpSelectedFilename);
-}
-
-async function selectLogo(finalUrl, filename) {
-  if (!window.logoPickerTargetId) return;
-
-  let channel = null;
-  const builderOpen = document.getElementById('builder-modal')?.classList.contains('open');
-
-  if (builderOpen && typeof tempRowItems !== 'undefined') {
-    channel = tempRowItems.find((i) => i.id === window.logoPickerTargetId);
-  }
-
-  if (!channel) {
-    for (const row of config.rows) {
-      channel = (row.items || []).find((i) => i.id === window.logoPickerTargetId);
-      if (channel) break;
-    }
-  }
-
-  if (!channel && window._orphanCustomChannels) {
-    channel = window._orphanCustomChannels.find((i) => i.id === window.logoPickerTargetId);
-  }
-
-  if (channel) {
-    channel._rawLogo = filename ? `/logos/${filename}` : finalUrl;
-    channel._logoMode = _lpMode;
-    channel.thumbnail = finalUrl;
-
-    markDirty();
-    if (builderOpen) {
-      renderRowItems();
-    } else {
-      renderCustomChannelsPanel();
-    }
-    toast('Logo updated', 'success');
-  }
-
-  closeLogoPicker();
+  _lpSelectedUrl = null;
 }
 
 // ─── Scan Modal

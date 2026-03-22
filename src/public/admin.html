@@ -432,40 +432,23 @@
       <div class="logo-picker-panel">
         <div class="logo-picker-header">
           <span class="logo-picker-title">Select Logo</span>
+          <div class="search-wrapper" style="flex:1;margin:0 var(--space-4);">
+            <span class="material-icons search-icon">search</span>
+            <input class="search-input" id="lp-search" type="search" placeholder="Search logos… e.g. sky sport" oninput="lpFilterLogos()" />
+          </div>
           <button class="logo-picker-close" onclick="closeLogoPicker()">×</button>
         </div>
         <div class="logo-picker-body">
-          <!-- Left: Preview + controls -->
-          <div class="logo-picker-left">
-            <div class="lp-preview-label">Preview</div>
-            <div class="lp-preview-wrap" id="lp-preview-wrap">
-              <img id="lp-preview-img" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="" style="display:none;" />
-              <span id="lp-preview-placeholder" class="material-icons">live_tv</span>
-            </div>
-            <button class="lp-upload-btn" onclick="lpTriggerUpload()">
-              <span class="material-icons">upload</span>
-              Upload
-            </button>
-            <input type="file" id="lp-upload-input" accept="image/*" style="display:none;" onchange="lpHandleUpload(event)" />
-            <div class="lp-mode-toggle">
-              <button class="lp-mode-btn fit active" id="lp-mode-fit" onclick="lpSetMode('fit')" title="Fit">
-                Fit
-              </button>
-              <button class="lp-mode-btn fill" id="lp-mode-fill" onclick="lpSetMode('fill')" title="Fill">
-                Fill
-              </button>
-            </div>
-            <div class="lp-spacer"></div>
-            <button class="lp-apply-btn" id="lp-apply-btn" onclick="lpApplyLogo()" disabled>
-              Apply
-            </button>
+          <div class="logo-picker-grid" id="logo-picker-grid">
+            <!-- Populated by JS -->
           </div>
-          <!-- Right: Logo grid -->
-          <div class="logo-picker-right">
-            <div class="logo-picker-grid" id="logo-picker-grid">
-              <!-- Populated by JS -->
-            </div>
+        </div>
+        <div class="logo-picker-footer">
+          <div class="lp-mode-toggle">
+            <button class="lp-mode-btn active" id="lp-mode-fit" onclick="lpSetMode('fit')">Fit</button>
+            <button class="lp-mode-btn" id="lp-mode-fill" onclick="lpSetMode('fill')">Fill</button>
           </div>
+          <button class="btn btn-primary btn-sm" id="lp-apply-btn" onclick="lpApplyLogo()" disabled>Apply</button>
         </div>
       </div>
     </div>

@@ -15,7 +15,6 @@
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const express = require('express');
-const path = require('path');
 const { addonBuilder } = require('stremio-addon-sdk');
 const getRouter = require('stremio-addon-sdk/src/getRouter');
 const { loadConfig } = require('./src/loader');
@@ -67,36 +66,54 @@ app.post('/api/user/generate', (_req, res) => {
   res.json({ userId });
 });
 
-// Logo list endpoint - returns list of available logos
-app.get('/api/logos/list', (_req, res) => {
-  const fs = require('fs');
-  // Try root-relative first, then one level up (handles Vercel bundling from api/)
-  let logosDir = path.resolve(__dirname, 'logos');
-  if (!fs.existsSync(logosDir)) logosDir = path.resolve(__dirname, '..', 'logos');
+// A1X IPTV addon — mounted at /a1x/
+app.use('/a1x', a1xRouter);
+
+// Logo proxy — fetches a remote image, applies fit/fill, returns processed PNG
+app.get('/api/logos/proxy', async (req, res) => {
+  const { url, mode } = req.query;
+  if (!url) return res.status(400).json({ error: 'url required' });
+
+  // Only allow GitHub raw URLs for security
+  if (!url.startsWith('https://raw.githubusercontent.com/tv-logo/tv-logos/')) {
+    return res.status(403).json({ error: 'URL not allowed' });
+  }
+
   try {
-    const files = fs.readdirSync(logosDir);
-    const logos = files
-      .filter((f) => /^\d+\.png$/.test(f))
-      .sort((a, b) => {
-        const numA = parseInt(a.replace('.png', ''));
-        const numB = parseInt(b.replace('.png', ''));
-        return numA - numB;
-      });
-    res.json({ logos });
+    const { Jimp, JimpMime } = require('jimp');
+    const SIZE = 400;
+    const PADDING = 40;
+
+    const src = await Jimp.read(url);
+    const sw = src.width;
+    const sh = src.height;
+
+    let scale;
+    if (mode === 'fill') {
+      scale = Math.max(SIZE / sw, SIZE / sh);
+    } else {
+      const maxDim = SIZE - PADDING * 2;
+      scale = Math.min(maxDim / sw, maxDim / sh);
+    }
+
+    const newW = Math.round(sw * scale);
+    const newH = Math.round(sh * scale);
+    src.resize({ w: newW, h: newH });
+
+    const out = new Jimp({ width: SIZE, height: SIZE, color: 0x00000000 });
+    const x = Math.round((SIZE - newW) / 2);
+    const y = Math.round((SIZE - newH) / 2);
+    out.composite(src, x, y);
+
+    const outBuffer = await out.getBuffer(JimpMime.png);
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.send(outBuffer);
   } catch (e) {
-    console.error('Failed to read logos directory:', e);
-    res.status(500).json({ error: 'Failed to read logos directory', details: e.message });
+    console.error('Logo proxy error:', e.message);
+    res.status(500).json({ error: e.message });
   }
 });
-
-// A1X IPTV addon — mounted at /a1x/
-const _logosDir = (() => {
-  const fs = require('fs');
-  const d1 = path.resolve(__dirname, 'logos');
-  return fs.existsSync(d1) ? d1 : path.resolve(__dirname, '..', 'logos');
-})();
-app.use('/logos', express.static(_logosDir));
-app.use('/a1x', a1xRouter);
 
 // Dynamic SDK Router middleware — only handles catalog/stream/meta routes, NOT manifest
 app.use(async (req, res, next) => {

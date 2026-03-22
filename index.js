@@ -70,7 +70,9 @@ app.post('/api/user/generate', (_req, res) => {
 // Logo list endpoint - returns list of available logos
 app.get('/api/logos/list', (_req, res) => {
   const fs = require('fs');
-  const logosDir = path.resolve(__dirname, 'logos');
+  // Try root-relative first, then one level up (handles Vercel bundling from api/)
+  let logosDir = path.resolve(__dirname, 'logos');
+  if (!fs.existsSync(logosDir)) logosDir = path.resolve(__dirname, '..', 'logos');
   try {
     const files = fs.readdirSync(logosDir);
     const logos = files
@@ -88,7 +90,12 @@ app.get('/api/logos/list', (_req, res) => {
 });
 
 // A1X IPTV addon — mounted at /a1x/
-app.use('/logos', express.static(path.resolve(__dirname, 'logos')));
+const _logosDir = (() => {
+  const fs = require('fs');
+  const d1 = path.resolve(__dirname, 'logos');
+  return fs.existsSync(d1) ? d1 : path.resolve(__dirname, '..', 'logos');
+})();
+app.use('/logos', express.static(_logosDir));
 app.use('/a1x', a1xRouter);
 
 // Dynamic SDK Router middleware — only handles catalog/stream/meta routes, NOT manifest

@@ -31,7 +31,7 @@
 /* Button Variants */
 .btn-primary {
   background: var(--color-accent-primary);
-  color: #000000;
+  color: #000;
   box-shadow: 0 0 16px var(--color-accent-glow);
 }
 
@@ -76,7 +76,19 @@
 
 .btn-danger:hover:not(:disabled) {
   background: var(--color-error);
-  color: #ffffff;
+  color: #fff;
+}
+
+.btn-danger-outline {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-default);
+}
+
+.btn-danger-outline:hover:not(:disabled) {
+  background: var(--color-error);
+  color: #fff;
+  border-color: var(--color-error);
 }
 
 /* Button Sizes */
@@ -142,7 +154,9 @@
   border-color: var(--color-accent-primary);
   color: var(--color-accent-primary);
   transform: translateY(-2px);
-  box-shadow: var(--shadow-lg), 0 0 20px var(--color-accent-glow);
+  box-shadow:
+    var(--shadow-lg),
+    0 0 20px var(--color-accent-glow);
 }
 
 .fab:active {
@@ -161,15 +175,17 @@
 /* FAB Variants */
 .fab-primary {
   background: var(--color-accent-primary);
-  color: #000000;
+  color: #000;
   border-color: var(--color-accent-primary);
-  box-shadow: var(--shadow-lg), 0 0 16px var(--color-accent-glow);
+  box-shadow:
+    var(--shadow-lg),
+    0 0 16px var(--color-accent-glow);
 }
 
 .fab-primary:hover {
   background: var(--color-accent-hover);
   border-color: var(--color-accent-hover);
-  color: #000000;
+  color: #000;
 }
 
 /* ───────────────────────────────────────────────────────────────

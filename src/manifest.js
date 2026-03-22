@@ -13,43 +13,42 @@
 const CONTENT_TYPES = ['movie', 'series', 'tv'];
 
 function buildManifest(addonMeta, rows) {
-    // Each row becomes one catalog entry.
-    // Filter out the auto-generated "Custom Channels" row
-    const catalogs = rows
-        .filter(row => row.id !== 'custom-channels')
-        .map(row => {
-            const type = row.contentType || 'movie';
-            const posterShape = type === 'tv' ? 'square' : 'poster';
+  // Each row becomes one catalog entry.
+  // Filter out the auto-generated "Custom Channels" row
+  const catalogs = rows
+    .filter((row) => row.id !== 'custom-channels')
+    .map((row) => {
+      const type = row.contentType || 'movie';
+      const posterShape = type === 'tv' ? 'square' : 'poster';
 
-            return {
-                id: row.id,
-                type,
-                name: row.name,
-                posterShape,
-                extra: [{ name: 'skip', isRequired: false }],
-            };
-        });
+      return {
+        id: row.id,
+        type,
+        name: row.name,
+        posterShape,
+        extra: [{ name: 'skip', isRequired: false }],
+      };
+    });
 
-    // We always declare 'catalog' and all content types
-    // so the SDK doesn't crash if they are missing at boot.
-    // The dynamic /manifest.json will still filter what Stremio *sees*.
-    return {
-        id: 'com.stremirow.custom',
-        version: addonMeta.version || '1.0.0',
-        name: 'StremiRow',
-        description: addonMeta.description || 'Personal curated rows...',
-        logo: addonMeta.logo || undefined,
+  // We always declare 'catalog' and all content types
+  // so the SDK doesn't crash if they are missing at boot.
+  // The dynamic /manifest.json will still filter what Stremio *sees*.
+  return {
+    id: 'com.stremirow.custom',
+    version: addonMeta.version || '1.0.0',
+    name: 'StremiRow',
+    description: addonMeta.description || 'Personal curated rows...',
+    logo: addonMeta.logo || undefined,
 
-        resources: [
-            'catalog',
-            { name: 'meta', types: ['tv'], idPrefixes: ['stremirow-'] },
-            { name: 'stream', types: ['tv'], idPrefixes: ['stremirow-'] }
-        ],
-        types: CONTENT_TYPES,
-        catalogs,
+    resources: [
+      'catalog',
+      { name: 'meta', types: ['tv'], idPrefixes: ['stremirow-'] },
+      { name: 'stream', types: ['tv'], idPrefixes: ['stremirow-'] },
+    ],
+    types: CONTENT_TYPES,
+    catalogs,
 
-        behaviorHints: { adult: false, p2p: false },
-    };
+    behaviorHints: { adult: false, p2p: false },
+  };
 }
 module.exports = { buildManifest };
-

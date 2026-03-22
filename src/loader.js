@@ -23,7 +23,9 @@ async function loadConfig(userId = null) {
   const uiConfig = await storage.loadConfig(userId);
 
   if (!uiConfig.addon || !uiConfig.addon.id || !uiConfig.addon.name) {
-    throw new Error('Configuration must have an "addon" object with at least "id" and "name" fields.');
+    throw new Error(
+      'Configuration must have an "addon" object with at least "id" and "name" fields.'
+    );
   }
 
   if (!Array.isArray(uiConfig.rows)) {
@@ -40,9 +42,11 @@ async function loadConfig(userId = null) {
 
   // Detect duplicate slugs
   const seenIds = new Set();
-  uiConfig.rows.forEach(row => {
+  uiConfig.rows.forEach((row) => {
     if (seenIds.has(row.id)) {
-      throw new Error(`Two rows produce the same slug ID "${row.id}". Please give them distinct names.`);
+      throw new Error(
+        `Two rows produce the same slug ID "${row.id}". Please give them distinct names.`
+      );
     }
     seenIds.add(row.id);
   });

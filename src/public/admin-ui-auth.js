@@ -1,3 +1,4 @@
+/* exported confirmLogout, syncStremio, installStremio, renderInstallTab, copyInstallUrl, copyA1xUrl, installA1x, sidebarDoLogin */
 'use strict';
 
 // ─── Stremio Auth & Sync
@@ -5,7 +6,9 @@
 let sidebarAuthStatus = null;
 
 async function initSidebarAuth() {
-  sidebarAuthStatus = await fetch(`/api/stremio/status${getUserParam()}`).then(r => r.json()).catch(() => null);
+  sidebarAuthStatus = await fetch(`/api/stremio/status${getUserParam()}`)
+    .then((r) => r.json())
+    .catch(() => null);
   const headerAccount = document.getElementById('header-account');
   const modalContent = document.getElementById('account-modal-content');
 
@@ -72,16 +75,27 @@ async function sidebarDoLogin() {
   const password = document.getElementById('sl-pass').value;
   const btn = document.getElementById('sl-btn');
   const err = document.getElementById('sl-err');
-  if (!email || !password) { err.textContent = 'Email and password required'; err.style.display = 'block'; return; }
-  err.style.display = 'none'; btn.innerHTML = '<span class="material-icons" style="font-size:14px;margin-right:4px;">hourglass_empty</span>Connecting…'; btn.disabled = true;
+  if (!email || !password) {
+    err.textContent = 'Email and password required';
+    err.style.display = 'block';
+    return;
+  }
+  err.style.display = 'none';
+  btn.innerHTML =
+    '<span class="material-icons" style="font-size:14px;margin-right:4px;">hourglass_empty</span>Connecting…';
+  btn.disabled = true;
   try {
-    const d = await fetch(`/api/stremio/login${getUserParam()}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }).then(r => r.json());
+    const d = await fetch(`/api/stremio/login${getUserParam()}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    }).then((r) => r.json());
     if (d.error) throw new Error(d.error);
     closeModal('stremio-login-modal');
     document.getElementById('sl-email').value = '';
     document.getElementById('sl-pass').value = '';
     await initSidebarAuth();
-    
+
     // Load and render content after successful login
     const savedData = localStorage.getItem('stremirow-config');
     if (savedData) {
@@ -93,36 +107,42 @@ async function sidebarDoLogin() {
         } else {
           console.log('⚠️ Browser storage expired, loading from server');
           localStorage.removeItem('stremirow-config');
-          const c = await fetch(`/api/config${getUserParam()}`).then(r => r.json());
+          const c = await fetch(`/api/config${getUserParam()}`).then((r) => r.json());
           config = c;
         }
       } catch (e) {
         console.error('Failed to parse saved config:', e);
-        const c = await fetch(`/api/config${getUserParam()}`).then(r => r.json());
+        const c = await fetch(`/api/config${getUserParam()}`).then((r) => r.json());
         config = c;
       }
     } else {
-      const c = await fetch(`/api/config${getUserParam()}`).then(r => r.json());
+      const c = await fetch(`/api/config${getUserParam()}`).then((r) => r.json());
       config = c;
     }
-    
+
     if (config._orphanCustomChannels) {
       window._orphanCustomChannels = config._orphanCustomChannels;
     } else {
       window._orphanCustomChannels = [];
     }
-    
+
     renderRows();
     renderCustomChannelsPanel();
     renderInstallTab();
-    
+
     toast('Connected to Stremio!', 'success');
-  } catch (e) { err.textContent = e.message; err.style.display = 'block'; btn.textContent = 'Connect'; btn.disabled = false; }
+  } catch (e) {
+    err.textContent = e.message;
+    err.style.display = 'block';
+    btn.textContent = 'Connect';
+    btn.disabled = false;
+  }
 }
 
 async function sidebarLogout() {
   await fetch(`/api/stremio/logout${getUserParam()}`, { method: 'POST' });
   await initSidebarAuth();
+  renderLoggedOutState();
   toast('Disconnected', 'success');
 }
 
@@ -133,60 +153,35 @@ function confirmLogout() {
 }
 
 async function syncStremio() {
-  const btn = document.getElementById('floating-sync-btn');
-  const textEl = document.getElementById('sync-btn-text');
-  if (btn) { btn.disabled = true; btn.className = 'floating-action-btn btn-primary syncing'; }
-  if (textEl) textEl.textContent = 'Syncing…';
   try {
     await saveAll();
     const r = await fetch(`/api/stremio/sync${getUserParam()}`, { method: 'POST' });
     const d = await r.json();
     if (d.error) throw new Error(d.error);
-    
-    // Reload config from server after sync
-    const c = await fetch(`/api/config${getUserParam()}`).then(r => r.json());
-    config = c;
-    
-    // Update orphan custom channels
-    if (config._orphanCustomChannels) {
-      window._orphanCustomChannels = config._orphanCustomChannels;
-    } else {
-      window._orphanCustomChannels = [];
-    }
-    
-    // Re-render panels with fresh data
-    renderRows();
-    renderCustomChannelsPanel();
-    
-    if (btn) btn.className = 'floating-action-btn btn-primary success';
-    if (textEl) textEl.textContent = 'Synced!';
-    setTimeout(() => {
-      if (btn) btn.className = 'floating-action-btn btn-primary';
-      if (textEl) textEl.textContent = 'Sync';
-    }, 3000);
+    toast('Synced to Stremio!', 'success');
   } catch (e) {
-    if (btn) btn.className = 'floating-action-btn btn-primary error';
-    if (textEl) textEl.textContent = 'Failed';
-    setTimeout(() => {
-      if (btn) btn.className = 'floating-action-btn btn-primary';
-      if (textEl) textEl.textContent = 'Sync';
-    }, 4000);
-  } finally {
-    if (btn) btn.disabled = false;
+    toast('Sync failed: ' + e.message, 'error');
   }
 }
 
 function installStremio() {
-  const manifestUrl = userId ? `${location.origin}/${userId}/manifest.json` : `${location.origin}/manifest.json`;
+  const manifestUrl = userId
+    ? `${location.origin}/${userId}/manifest.json`
+    : `${location.origin}/manifest.json`;
   if (location.protocol === 'http:') {
-    prompt('Local Addons must be pasted into Stremio manually.\n\nCopy this link and paste it into the Stremio search bar to update your rows:', manifestUrl);
+    prompt(
+      'Local Addons must be pasted into Stremio manually.\n\nCopy this link and paste it into the Stremio search bar to update your rows:',
+      manifestUrl
+    );
   } else {
     window.location.href = manifestUrl.replace('https:', 'stremio:');
   }
 }
 
 function renderInstallTab() {
-  const manifestUrl = userId ? `${location.origin}/${userId}/manifest.json` : `${location.origin}/manifest.json`;
+  const manifestUrl = userId
+    ? `${location.origin}/${userId}/manifest.json`
+    : `${location.origin}/manifest.json`;
   document.getElementById('set-install-url').value = manifestUrl;
   document.getElementById('a1x-install-url').value = location.origin + '/a1x/manifest.json';
 }
@@ -208,9 +203,11 @@ function copyA1xUrl() {
 function installA1x() {
   const manifestUrl = location.origin + '/a1x/manifest.json';
   if (location.protocol === 'http:') {
-    prompt('Local Addons must be pasted into Stremio manually.\n\nCopy this link and paste it into the Stremio search bar:', manifestUrl);
+    prompt(
+      'Local Addons must be pasted into Stremio manually.\n\nCopy this link and paste it into the Stremio search bar:',
+      manifestUrl
+    );
     return;
   }
   window.location.href = manifestUrl.replace('https:', 'stremio:');
 }
-

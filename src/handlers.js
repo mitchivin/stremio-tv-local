@@ -14,17 +14,23 @@
 /**
  * Build a Stremio MetaPreview for a movie/series/tv-type item (library or external addon item).
  * The id must match what external addons expect (IMDB ID or addon-specific ID).
+ * baseUrl is used to resolve relative /logos/ paths to absolute URLs for Stremio.
  */
-function libraryMeta(item) {
+function libraryMeta(item, baseUrl) {
   const type = item.type || 'movie';
+  let poster = item.thumbnail || '';
+  // Resolve relative logo paths — Stremio needs absolute URLs
+  if (poster.startsWith('/') && baseUrl) {
+    poster = baseUrl + poster;
+  }
   return {
     id: item.id,
     type: type,
     name: item.title,
     description: item.description || '',
-    poster: item.thumbnail || '',
+    poster: poster,
     posterShape: type === 'tv' ? 'square' : 'poster',
-    background: item.thumbnail || '',
+    background: poster,
     imdbRating: item.imdbRating || undefined,
   };
 }
@@ -36,19 +42,23 @@ function registerHandlers(builder, configProvider) {
   // ── Catalog handler ────────────────────────────────────────────────────────
   builder.defineCatalogHandler(function (args) {
     const { type, id, extra } = args;
-    const { rows } = configProvider();
+    const cfg = configProvider();
+    const { rows, baseUrl } = cfg;
 
-    const row = rows.find((r) => r.id === id && (r.contentType || 'movie') === type);
+    // Strip cache-bust suffix added during sync (e.g. "sport__vk3x9a2" → "sport")
+    const rowId = id.replace(/__v[a-z0-9]+$/, '');
+
+    const row = rows.find((r) => r.id === rowId && (r.contentType || 'movie') === type);
     if (!row || !Array.isArray(row.items)) return Promise.resolve({ metas: [] });
 
     const skip = parseInt(extra?.skip || 0, 10);
     const allMetas = row.items
       .filter((s) => s && (s.type || 'movie') === type)
-      .map((s) => libraryMeta(s));
+      .map((s) => libraryMeta(s, baseUrl));
 
     const metas = skip >= allMetas.length ? [] : allMetas.slice(skip);
     console.log(
-      `[catalog] "${row.name}" (${type}/${row.id}) skip=${skip} → ${metas.length} item(s)`
+      `[catalog] "${row.name}" (${type}/${rowId}) skip=${skip} → ${metas.length} item(s)`
     );
     return Promise.resolve({ metas });
   });
@@ -56,11 +66,12 @@ function registerHandlers(builder, configProvider) {
   // ── Meta handler for custom channels ──────────────────────────────────────
   builder.defineMetaHandler(function ({ type: _type, id }) {
     if (!id.startsWith('stremirow-')) return Promise.resolve({ meta: null });
-    const { rows } = configProvider();
+    const cfg = configProvider();
+    const { rows, baseUrl } = cfg;
     for (const row of rows) {
       const item = (row.items || []).find((i) => i.id === id);
       if (item) {
-        return Promise.resolve({ meta: libraryMeta(item) });
+        return Promise.resolve({ meta: libraryMeta(item, baseUrl) });
       }
     }
     return Promise.resolve({ meta: null });

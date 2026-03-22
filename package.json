@@ -10,7 +10,8 @@
     "lint:css:fix": "stylelint \"src/**/*.css\" --fix",
     "lint:html": "htmlhint \"src/**/*.html\"",
     "lint": "npm run lint:js && npm run lint:css && npm run lint:html",
-    "format": "prettier --write \"src/**/*.{js,css,html}\" \"api/**/*.js\" \"index.js\""
+    "format": "prettier --write \"src/**/*.{js,css,html}\" \"api/**/*.js\" \"index.js\"",
+    "clean-gist": "node scripts/clean-gist.js"
   },
   "dependencies": {
     "dotenv": "^17.3.1",

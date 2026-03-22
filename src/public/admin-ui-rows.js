@@ -1,4 +1,4 @@
-/* exported renderRows, dragStart, dragOver, dragLeave, drop, deleteRow, deleteRowWithConfirm, deleteAllRows, cancelInlineRename, openBuilderModal, deleteActiveRow, commitBuilderSetup, saveActiveRow, removeItem, onDragStartRowItem, onDragOverRowItem, onDropRowItem, toggleActiveRowItem, openLogoPickerForRowItem, selectLogo, startInlineRename, commitInlineRename, cancelInlineRename */
+/* exported renderRows, dragStart, dragOver, dragLeave, drop, deleteRowWithConfirm, deleteAllRows, cancelInlineRename, openBuilderModal, commitBuilderSetup, saveActiveRow, removeItem, onDragStartRowItem, onDragOverRowItem, onDropRowItem, toggleActiveRowItem, selectLogo, startInlineRename, commitInlineRename, cancelInlineRename, openLogoPicker */
 // ─── Rows
 function renderRows() {
   const el = document.getElementById('rows-container');
@@ -21,7 +21,7 @@ function renderRows() {
   }
 
   el.innerHTML = `<div class="channels-grid">${visibleRows
-    .map((row, i) => {
+    .map((row) => {
       const actualIndex = config.rows.indexOf(row);
       const count = (row.items || []).length;
       const ct = row.contentType || 'movie';
@@ -80,18 +80,11 @@ function dragLeave(e) {
 function drop(e, i) {
   e.preventDefault();
   document
-    .querySelectorAll('.home-row')
+    .querySelectorAll('.channel-card')
     .forEach((el) => el.classList.remove('drag-over', 'dragging'));
   if (i === dragIdx) return;
   const m = config.rows.splice(dragIdx, 1)[0];
   config.rows.splice(i, 0, m);
-  markDirty();
-  renderRows();
-}
-
-function deleteRow(i) {
-  if (!confirm(`Delete row "${config.rows[i].name}"?`)) return;
-  config.rows.splice(i, 1);
   markDirty();
   renderRows();
 }
@@ -143,7 +136,7 @@ function setBuilderTitle(name, type) {
   const titleEl = document.getElementById('builder-modal-title');
   if (!titleEl) return;
   const label = TYPE_LABELS[type] || type;
-  titleEl.innerHTML = `<span class="builder-type-tag">${esc(label)}</span> <span class="builder-title-name" onclick="startInlineRename()" title="Click to rename" data-title="${esc(name)}">${esc(name)}<span class="material-icons" style="font-size: 20px; opacity: 0.7;">edit</span></span>`;
+  titleEl.innerHTML = `<span class="builder-type-tag">${esc(label)}</span> <span class="editable-title builder-title-name" onclick="startInlineRename()" title="Click to rename" data-title="${esc(name)}">${esc(name)}<span class="material-icons" style="font-size: 20px; opacity: 0.7;">edit</span></span>`;
   const input = document.getElementById('builder-title-input');
   const confirmBtn = document.getElementById('builder-rename-confirm');
   if (input) {
@@ -227,16 +220,6 @@ function openBuilderModal(idx = -1) {
   }
 }
 
-function deleteActiveRow() {
-  if (editingRowIdx < 0) return;
-  if (!confirm(`Delete row "${config.rows[editingRowIdx].name}"?`)) return;
-  config.rows.splice(editingRowIdx, 1);
-  closeBuilderModal();
-  markDirty();
-  renderRows();
-  toast('Row deleted', 'success');
-}
-
 let _builderType = 'movie';
 
 function selectBuilderType(type) {
@@ -253,10 +236,9 @@ function commitBuilderSetup() {
     return;
   }
 
-  const TYPE_LABELS = { movie: 'Movies', series: 'Series', tv: 'TV Channels' };
   setBuilderTitle(name, _builderType);
-  document.getElementById('builder-save-btn').style.display = '';
 
+  document.getElementById('builder-save-btn').style.display = '';
   document.getElementById('builder-setup').style.display = 'none';
   document.getElementById('builder-editor').style.display = '';
 
@@ -311,16 +293,14 @@ function renderRowItems() {
         : `<div style="display:flex;align-items:center;justify-content:center;height:100%;"><span class="material-icons" style="font-size:24px;color:var(--color-text-disabled);">${ph}</span></div>`;
       if (isTv) {
         return `<div class="builder-item tv-item"
+        draggable="true"
+        ondragstart="onDragStartRowItem(event,${i})"
         ondragover="onDragOverRowItem(event)"
         ondrop="onDropRowItem(event,${i})"
         title="${esc(s.title)}">
         <div class="builder-item-thumb tv">${thumb}</div>
         <div class="builder-item-overlay">
-          <div class="builder-item-drag-handle"
-            draggable="true"
-            ondragstart="onDragStartRowItem(event,${i})"
-            title="Drag to reorder">⠿</div>
-          <button class="builder-item-hover-btn accent" onclick="openLogoPickerForRowItem('${esc(s.id)}', event)" title="Choose Logo">Logo</button>
+          <button class="builder-item-hover-btn accent" onclick="openLogoPicker('${esc(s.id)}', event)" title="Choose Logo">Logo</button>
           <button class="builder-item-hover-btn delete" onclick="removeItem(${i})" title="Remove">Delete</button>
         </div>
       </div>`;
@@ -332,7 +312,9 @@ function renderRowItems() {
       ondrop="onDropRowItem(event,${i})"
       title="${esc(s.title)}">
       <div class="builder-item-thumb">${thumb}</div>
-      <button class="builder-item-remove" onclick="removeItem(${i})" title="Remove">×</button>
+      <div class="builder-item-overlay">
+        <button class="builder-item-hover-btn delete" onclick="removeItem(${i})" title="Remove">Delete</button>
+      </div>
     </div>`;
     })
     .join('');
@@ -343,24 +325,48 @@ function removeItem(i) {
   refreshDiscoveryGrids();
 }
 
+function _clearRowItemDragState() {
+  document.querySelectorAll('.builder-item').forEach((el) => {
+    el.classList.remove('drop-target', 'dragging', 'drag-source');
+    el.style.opacity = '';
+  });
+  dragRowItemIdx = null;
+}
+
 let dragRowItemIdx = null;
 function onDragStartRowItem(e, i) {
   dragRowItemIdx = i;
   e.dataTransfer.effectAllowed = 'move';
   const item = e.target.closest('.builder-item');
-  if (item) item.style.opacity = '0.5';
+  if (item) {
+    item.classList.add('dragging');
+    setTimeout(() => item.classList.add('drag-source'), 0);
+  }
+  // Clear indicators on drag end (cancel or drop outside)
+  document.addEventListener('dragend', _clearRowItemDragState, { once: true });
 }
 function onDragOverRowItem(e) {
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
+  const target = e.target.closest('.builder-item');
+  if (!target) return;
+  document.querySelectorAll('.builder-item').forEach((el) => el.classList.remove('drop-target'));
+  target.classList.add('drop-target');
 }
 function onDropRowItem(e, targetIdx) {
   e.preventDefault();
-  const chip = e.target.closest('.builder-item');
-  if (chip) chip.style.opacity = '1';
-  if (dragRowItemIdx === null || dragRowItemIdx === targetIdx) return;
+  document.querySelectorAll('.builder-item').forEach((el) => {
+    el.classList.remove('drop-target', 'dragging', 'drag-source');
+    el.style.opacity = '';
+  });
+  if (dragRowItemIdx === null || dragRowItemIdx === targetIdx) {
+    dragRowItemIdx = null;
+    return;
+  }
   const item = tempRowItems.splice(dragRowItemIdx, 1)[0];
-  tempRowItems.splice(targetIdx, 0, item);
+  let insertIdx = targetIdx;
+  if (dragRowItemIdx < insertIdx) insertIdx--;
+  tempRowItems.splice(insertIdx, 0, item);
   dragRowItemIdx = null;
   renderRowItems();
 }
@@ -401,28 +407,6 @@ function refreshDiscoveryGrids() {
   } else {
     applyTVFilter();
   }
-}
-
-function openLogoPickerForRowItem(itemId, event) {
-  event.stopPropagation();
-  logoPickerTargetId = itemId;
-  loadLogoPickerCache().then(() => {
-    const grid = document.getElementById('logo-picker-grid');
-    if (!logoPickerCache.length) {
-      grid.innerHTML =
-        '<div style="grid-column: 1/-1; text-align: center; padding: var(--space-6); color: var(--color-text-secondary);">No logos found in /logos/ folder</div>';
-    } else {
-      grid.innerHTML = logoPickerCache
-        .map(
-          (filename) =>
-            `<div class="logo-picker-item" onclick="selectLogo('${esc(filename)}')">
-          <img src="/logos/${esc(filename)}" alt="${esc(filename)}" />
-        </div>`
-        )
-        .join('');
-    }
-    document.getElementById('logo-picker-modal').classList.add('open');
-  });
 }
 
 function saveActiveRow() {

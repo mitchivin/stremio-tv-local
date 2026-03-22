@@ -1,4 +1,5 @@
 /* exported confirmLogout, syncStremio, installStremio, renderInstallTab, copyInstallUrl, copyA1xUrl, installA1x, sidebarDoLogin */
+/* global _saveTimer */
 'use strict';
 
 // ─── Stremio Auth & Sync
@@ -154,6 +155,8 @@ function confirmLogout() {
 
 async function syncStremio() {
   try {
+    // Cancel any pending debounced save and flush immediately
+    if (typeof _saveTimer !== 'undefined') clearTimeout(_saveTimer);
     await saveAll();
     const r = await fetch(`/api/stremio/sync${getUserParam()}`, { method: 'POST' });
     const d = await r.json();

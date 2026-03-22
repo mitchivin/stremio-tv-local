@@ -1,12 +1,13 @@
-/* exported getAllCustomChannels, renderCustomChannelsPanel, confirmDeleteChannel, deleteAllCustomChannels, newCustomChannel, closeCCModal, ccStartEditTitle, ccConfirmEditTitle, ccCancelEditTitle, ccSetLogoMode, saveCustomChannel, openLogoPicker, closeLogoPicker, selectLogo */
+/* exported getAllCustomChannels, renderCustomChannelsPanel, confirmDeleteChannel, deleteAllCustomChannels, newCustomChannel, closeCCModal, ccStartEditTitle, ccConfirmEditTitle, ccCancelEditTitle, saveCustomChannel, openLogoPicker, closeLogoPicker, selectLogo, lpSetMode, lpTriggerUpload, lpHandleUpload, lpApplyLogo, lpSelectGridLogo, openScanModal, closeScanModal, toggleScanSelectAll, addSelectedScanChannels, filterScanGrid */
 // ─── Custom Channels Panel
 function getAllCustomChannels() {
   const channels = [];
   const seen = new Set();
 
-  // Get custom channels from all rows
-  for (const row of config.rows) {
-    for (const item of row.items || []) {
+  // Only look in the dedicated custom-channels row
+  const ccRow = config.rows.find((r) => r.id === 'custom-channels');
+  if (ccRow) {
+    for (const item of ccRow.items || []) {
       if (item.id && item.id.startsWith('stremirow-') && !seen.has(item.id)) {
         seen.add(item.id);
         channels.push(item);
@@ -33,7 +34,7 @@ function renderCustomChannelsPanel() {
   const channels = getAllCustomChannels();
   if (!channels.length) {
     el.innerHTML =
-      '<div class="empty-state"><div class="empty-icon"><span class="material-icons">live_tv</span></div><div class="empty-title">No custom channels yet</div><div class="empty-text">Create multi-source TV channels with automatic fallback</div></div>';
+      '<div class="empty-state"><div class="empty-icon"><span class="material-icons">live_tv</span></div><div class="empty-title">No multi-source channels yet</div><div class="empty-text">Create TV channels with automatic source fallback</div></div>';
     return;
   }
   el.innerHTML = `<div class="channels-grid">${channels
@@ -51,7 +52,6 @@ function renderCustomChannelsPanel() {
         </div>
         <div class="channel-hover-buttons">
           <button class="channel-hover-btn" onclick="event.stopPropagation(); openCustomChannelModalById('${esc(ch.id)}')">Edit (${srcCount})</button>
-          <button class="channel-hover-btn" onclick="event.stopPropagation(); openLogoPicker('${esc(ch.id)}', event)">Choose Logo</button>
           <button class="channel-hover-btn delete" onclick="event.stopPropagation(); confirmDeleteChannel(this, '${esc(ch.id)}')">Delete</button>
         </div>
       </div>`;
@@ -90,11 +90,13 @@ function confirmDeleteChannel(btn, id) {
 function deleteAllCustomChannels() {
   const count = getAllCustomChannels().length;
   if (!count) {
-    toast('No custom channels to delete', 'success');
+    toast('No multi-source channels to delete', 'success');
     return;
   }
   if (
-    !confirm(`Delete all ${count} custom channel${count !== 1 ? 's' : ''}? This cannot be undone.`)
+    !confirm(
+      `Delete all ${count} multi-source channel${count !== 1 ? 's' : ''}? This cannot be undone.`
+    )
   )
     return;
 
@@ -108,7 +110,7 @@ function deleteAllCustomChannels() {
   renderRows();
   renderCustomChannelsPanel();
   if (document.getElementById('tv-grid')) applyTVFilter();
-  toast('All custom channels deleted', 'success');
+  toast('All multi-source channels deleted', 'success');
 }
 
 function newCustomChannel() {
@@ -175,7 +177,6 @@ async function openCustomChannelModal(existingItem) {
   if (!existingItem) return;
   ccSources = JSON.parse(JSON.stringify(existingItem.sources || []));
   ccEditingId = existingItem.id;
-  if (!ccIsNew) ccIsNew = false;
   ccAllChannels = [];
 
   const titleDisplay = document.getElementById('cc-modal-title-display');
@@ -188,45 +189,6 @@ async function openCustomChannelModal(existingItem) {
   if (titleDisplay) titleDisplay.style.display = '';
   if (titleInput) titleInput.style.display = 'none';
   if (confirmBtn) confirmBtn.style.display = 'none';
-
-  const logoValue = document.getElementById('cc-modal-logo-value');
-  const rawLogoValue = document.getElementById('cc-modal-raw-logo');
-  const modeValue = document.getElementById('cc-modal-mode-value');
-  const logoPreview = document.getElementById('cc-modal-logo-preview');
-  const logoPlaceholder = document.getElementById('cc-modal-logo-placeholder');
-
-  const currentMode = existingItem._logoMode || 'fit';
-  if (modeValue) modeValue.value = currentMode;
-
-  const modeButtons = document.querySelectorAll('.mode-btn');
-  modeButtons.forEach((btn) => {
-    btn.classList.toggle('active', btn.classList.contains(currentMode));
-  });
-
-  if (existingItem.thumbnail) {
-    if (logoValue) logoValue.value = existingItem.thumbnail;
-    if (logoPreview) {
-      logoPreview.src = existingItem.thumbnail;
-      logoPreview.style.display = '';
-    }
-    if (logoPlaceholder) logoPlaceholder.style.display = 'none';
-    // Enable mode buttons — user has a chosen logo
-    document.querySelectorAll('.mode-btn').forEach((b) => b.classList.remove('mode-disabled'));
-  } else {
-    if (logoValue) logoValue.value = '';
-    // Show source logo as preview if available, but mark mode buttons as disabled
-    const sourceLogo = existingItem.sources?.[0]?.channelLogo || '';
-    if (sourceLogo && logoPreview) {
-      logoPreview.src = sourceLogo;
-      logoPreview.style.display = '';
-      if (logoPlaceholder) logoPlaceholder.style.display = 'none';
-    } else {
-      if (logoPreview) logoPreview.style.display = 'none';
-      if (logoPlaceholder) logoPlaceholder.style.display = '';
-    }
-    document.querySelectorAll('.mode-btn').forEach((b) => b.classList.add('mode-disabled'));
-  }
-  if (rawLogoValue) rawLogoValue.value = existingItem._rawLogo || '';
 
   renderCCSources();
   document.getElementById('cc-search').value = '';
@@ -303,19 +265,6 @@ function ccCancelEditTitle() {
   }
 }
 
-function ccSetLogoMode(mode) {
-  const modeInput = document.getElementById('cc-modal-mode-value');
-  if (modeInput) modeInput.value = mode;
-  const modeButtons = document.querySelectorAll('.mode-btn');
-  modeButtons.forEach((btn) => {
-    btn.classList.toggle('active', btn.classList.contains(mode));
-  });
-
-  const rawInput = document.getElementById('cc-modal-raw-logo');
-  const raw = rawInput ? rawInput.value : '';
-  if (raw) ccApplyLogoMode(raw, mode);
-}
-
 /**
  * Process logo image with specified mode (fit/fill) and transparent background
  * @param {Image} img - The image element to process
@@ -347,24 +296,6 @@ function processLogoWithMode(img, mode) {
   return canvas.toDataURL('image/png');
 }
 
-function ccApplyLogoMode(rawDataUrl, mode) {
-  const img = new Image();
-  img.onload = function () {
-    const dataUrl = processLogoWithMode(img, mode);
-    const logoInput = document.getElementById('cc-modal-logo-value');
-    if (logoInput) logoInput.value = dataUrl;
-    const preview = document.getElementById('cc-modal-logo-preview');
-    if (preview) {
-      preview.src = dataUrl;
-      preview.style.display = '';
-    }
-    const placeholder = document.getElementById('cc-modal-logo-placeholder');
-    if (placeholder) placeholder.style.display = 'none';
-    document.querySelectorAll('.mode-btn').forEach((b) => b.classList.remove('mode-disabled'));
-  };
-  img.src = rawDataUrl;
-}
-
 function saveCustomChannel() {
   if (!ccEditingId) return;
   if (!ccSources.length) {
@@ -373,17 +304,13 @@ function saveCustomChannel() {
   }
 
   let item = null;
-  let found = false;
 
   for (const row of config.rows) {
     item = (row.items || []).find((i) => i.id === ccEditingId);
-    if (item) {
-      found = true;
-      break;
-    }
+    if (item) break;
   }
 
-  if (!found && window._orphanCustomChannels) {
+  if (!item && window._orphanCustomChannels) {
     item = window._orphanCustomChannels.find((i) => i.id === ccEditingId);
   }
 
@@ -404,22 +331,9 @@ function saveCustomChannel() {
 
   item.sources = JSON.parse(JSON.stringify(ccSources));
 
-  const logoInput = document.getElementById('cc-modal-logo-value');
-  const modeInput = document.getElementById('cc-modal-mode-value');
-  const rawLogoInput = document.getElementById('cc-modal-raw-logo');
-
-  if (logoInput && logoInput.value) {
-    item.thumbnail = logoInput.value;
-  } else if (!item.thumbnail && ccSources[0]?.channelLogo) {
+  // Use first source logo as thumbnail if none set
+  if (!item.thumbnail && ccSources[0]?.channelLogo) {
     item.thumbnail = ccSources[0].channelLogo;
-  }
-
-  if (modeInput) {
-    item._logoMode = modeInput.value;
-  }
-
-  if (rawLogoInput && rawLogoInput.value) {
-    item._rawLogo = rawLogoInput.value;
   }
 
   markDirty();
@@ -448,113 +362,359 @@ function saveCustomChannel() {
 
 // ─── Logo Picker
 let logoPickerCache = null;
-let logoPickerTargetId = null;
+window.logoPickerTargetId = null;
+let _lpSelectedFilename = null; // currently highlighted logo in picker
+let _lpMode = 'fit'; // current mode in picker
+let _lpRawDataUrl = null; // raw data url for upload or selected logo
 
-/**
- * Load available logos from /logos/ directory
- * @returns {Promise<Array<string>>} Array of logo filenames
- */
 async function loadLogoPickerCache() {
   if (logoPickerCache !== null) return logoPickerCache;
-
   try {
     const response = await fetch('/api/logos/list');
     const data = await response.json();
     logoPickerCache = data.logos || [];
-    console.log(`📦 Loaded ${logoPickerCache.length} logos for picker`);
   } catch (e) {
     console.warn('Failed to load logo picker cache:', e);
     logoPickerCache = [];
     toast('Failed to load logos', 'error');
   }
-
   return logoPickerCache;
 }
 
-/**
- * Open logo picker modal for a specific channel
- * @param {string} channelId - The channel ID to apply logo to
- * @param {Event} event - Click event
- */
+function _lpSetPreview(src) {
+  const img = document.getElementById('lp-preview-img');
+  const ph = document.getElementById('lp-preview-placeholder');
+  if (!src) {
+    if (img) {
+      img.src = '';
+      img.style.display = 'none';
+    }
+    if (ph) ph.style.display = '';
+    return;
+  }
+  if (img) {
+    img.src = src;
+    img.style.display = '';
+  }
+  if (ph) ph.style.display = 'none';
+}
+
+function _lpSetApplyEnabled(enabled) {
+  const btn = document.getElementById('lp-apply-btn');
+  if (btn) btn.disabled = !enabled;
+}
+
+function lpSetMode(mode) {
+  _lpMode = mode;
+  document.getElementById('lp-mode-fit')?.classList.toggle('active', mode === 'fit');
+  document.getElementById('lp-mode-fill')?.classList.toggle('active', mode === 'fill');
+  // Re-process if we have a raw data url
+  if (_lpRawDataUrl) {
+    const img = new Image();
+    img.onload = function () {
+      const processed = processLogoWithMode(img, mode);
+      _lpSetPreview(processed);
+    };
+    img.src = _lpRawDataUrl;
+  }
+}
+
+function lpTriggerUpload() {
+  document.getElementById('lp-upload-input')?.click();
+}
+
+function lpHandleUpload(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    _lpRawDataUrl = e.target.result;
+    _lpSelectedFilename = null;
+    // Deselect any grid item
+    document.querySelectorAll('.logo-picker-item').forEach((el) => el.classList.remove('selected'));
+    const img = new Image();
+    img.onload = function () {
+      const processed = processLogoWithMode(img, _lpMode);
+      _lpSetPreview(processed);
+      _lpSetApplyEnabled(true);
+    };
+    img.src = _lpRawDataUrl;
+  };
+  reader.readAsDataURL(file);
+  // Reset input so same file can be re-selected
+  event.target.value = '';
+}
+
 async function openLogoPicker(channelId, event) {
   event.stopPropagation();
-  logoPickerTargetId = channelId;
+  window.logoPickerTargetId = channelId;
+  _lpSelectedFilename = null;
+  _lpRawDataUrl = null;
+  _lpMode = 'fit';
+
+  // Reset mode buttons
+  document.getElementById('lp-mode-fit')?.classList.add('active');
+  document.getElementById('lp-mode-fill')?.classList.remove('active');
+  _lpSetApplyEnabled(false);
+
+  // Populate preview with current channel logo
+  let currentThumb = null;
+  const builderOpen = document.getElementById('builder-modal')?.classList.contains('open');
+  if (builderOpen && typeof tempRowItems !== 'undefined') {
+    const ch = tempRowItems.find((i) => i.id === channelId);
+    if (ch) currentThumb = ch.thumbnail || null;
+  }
+  if (!currentThumb) {
+    for (const row of config.rows) {
+      const ch = (row.items || []).find((i) => i.id === channelId);
+      if (ch) {
+        currentThumb = ch.thumbnail || null;
+        break;
+      }
+    }
+  }
+  if (!currentThumb && window._orphanCustomChannels) {
+    const ch = window._orphanCustomChannels.find((i) => i.id === channelId);
+    if (ch) currentThumb = ch.thumbnail || null;
+  }
+  _lpSetPreview(currentThumb);
 
   await loadLogoPickerCache();
 
-  const modal = document.getElementById('logo-picker-modal');
   const grid = document.getElementById('logo-picker-grid');
-
   if (!logoPickerCache.length) {
     grid.innerHTML =
       '<div style="grid-column: 1/-1; text-align: center; padding: var(--space-6); color: var(--color-text-secondary);">No logos found in /logos/ folder</div>';
   } else {
     grid.innerHTML = logoPickerCache
-      .map((filename) => {
-        return `<div class="logo-picker-item" onclick="selectLogo('${esc(filename)}')">
+      .map(
+        (filename) =>
+          `<div class="logo-picker-item" onclick="lpSelectGridLogo('${esc(filename)}', this)">
         <img src="/logos/${esc(filename)}" alt="${esc(filename)}" />
-      </div>`;
-      })
+      </div>`
+      )
       .join('');
   }
 
-  modal.classList.add('open');
+  document.getElementById('logo-picker-modal').classList.add('open');
 }
 
-/**
- * Close logo picker modal
- */
+function lpSelectGridLogo(filename, el) {
+  _lpSelectedFilename = filename;
+  _lpRawDataUrl = `/logos/${filename}`;
+  // Highlight selected
+  document
+    .querySelectorAll('.logo-picker-item')
+    .forEach((item) => item.classList.remove('selected'));
+  el.classList.add('selected');
+  // Process through current mode so preview always matches
+  const img = new Image();
+  img.onload = function () {
+    _lpSetPreview(processLogoWithMode(img, _lpMode));
+    _lpSetApplyEnabled(true);
+  };
+  img.src = _lpRawDataUrl;
+}
+
 function closeLogoPicker() {
-  const modal = document.getElementById('logo-picker-modal');
-  modal.classList.remove('open');
-  logoPickerTargetId = null;
+  document.getElementById('logo-picker-modal').classList.remove('open');
+  window.logoPickerTargetId = null;
+  _lpSelectedFilename = null;
+  _lpRawDataUrl = null;
 }
 
-/**
- * Select a logo from the picker and apply it to the target channel
- * @param {string} filename - The logo filename to apply
- */
-async function selectLogo(filename) {
-  if (!logoPickerTargetId) return;
+async function lpApplyLogo() {
+  if (!window.logoPickerTargetId || !_lpRawDataUrl) return;
 
-  // Find the channel — check tempRowItems first if builder modal is open
+  // Preview is already processed through processLogoWithMode — grab it directly
+  const previewImg = document.getElementById('lp-preview-img');
+  const finalUrl = previewImg?.src || _lpRawDataUrl;
+
+  await selectLogo(finalUrl, _lpSelectedFilename);
+}
+
+async function selectLogo(finalUrl, filename) {
+  if (!window.logoPickerTargetId) return;
+
   let channel = null;
   const builderOpen = document.getElementById('builder-modal')?.classList.contains('open');
 
   if (builderOpen && typeof tempRowItems !== 'undefined') {
-    channel = tempRowItems.find((i) => i.id === logoPickerTargetId);
+    channel = tempRowItems.find((i) => i.id === window.logoPickerTargetId);
   }
 
   if (!channel) {
     for (const row of config.rows) {
-      channel = (row.items || []).find((i) => i.id === logoPickerTargetId);
+      channel = (row.items || []).find((i) => i.id === window.logoPickerTargetId);
       if (channel) break;
     }
   }
 
   if (!channel && window._orphanCustomChannels) {
-    channel = window._orphanCustomChannels.find((i) => i.id === logoPickerTargetId);
+    channel = window._orphanCustomChannels.find((i) => i.id === window.logoPickerTargetId);
   }
 
   if (channel) {
-    // For local logos, skip canvas processing — just store the URL directly
-    channel._rawLogo = `/logos/${filename}`;
-    channel._logoMode = 'fit';
-    channel.thumbnail = `/logos/${filename}`;
+    channel._rawLogo = filename ? `/logos/${filename}` : finalUrl;
+    channel._logoMode = _lpMode;
+    channel.thumbnail = finalUrl;
 
     markDirty();
     if (builderOpen) {
       renderRowItems();
     } else {
-      const logoInput = document.getElementById('cc-modal-logo-value');
-      if (logoInput) logoInput.value = channel.thumbnail;
-      const rawLogoInput = document.getElementById('cc-modal-raw-logo');
-      if (rawLogoInput) rawLogoInput.value = channel._rawLogo;
       renderCustomChannelsPanel();
-      document.querySelectorAll('.mode-btn').forEach((b) => b.classList.remove('mode-disabled'));
     }
     toast('Logo updated', 'success');
   }
 
   closeLogoPicker();
+}
+
+// ─── Scan Modal
+/* globals ccDetectedMatches, normaliseName */
+let _scanSelected = new Set();
+
+async function openScanModal() {
+  _scanSelected = new Set();
+  openModal('scan-modal');
+  _renderScanGrid();
+
+  // Load addons + channels if not already loaded
+  if (!tvAddons.length) {
+    document.getElementById('scan-load-status').textContent = 'Loading addons…';
+    document.getElementById('scan-load-status').style.display = '';
+    try {
+      const d = await fetch(`/api/stremio/addons${getUserParam()}`).then((r) => r.json());
+      tvAddons = (d.addons || []).filter(isTvAddon);
+    } catch (e) {
+      tvAddons = [];
+    }
+  }
+
+  if (!ccAllChannels.length) {
+    document.getElementById('scan-load-status').textContent = `Loading channels…`;
+    document.getElementById('scan-load-status').style.display = '';
+    await loadAllCCChannels();
+  }
+
+  document.getElementById('scan-load-status').style.display = 'none';
+  _renderScanGrid();
+}
+
+function closeScanModal() {
+  closeModal('scan-modal');
+  _scanSelected = new Set();
+}
+
+function filterScanGrid() {
+  _renderScanGrid();
+}
+
+function _renderScanGrid() {
+  const grid = document.getElementById('scan-grid');
+  const countEl = document.getElementById('scan-selected-count');
+  const addBtn = document.getElementById('scan-add-btn');
+  if (!grid) return;
+
+  const q = (document.getElementById('scan-search')?.value || '').toLowerCase();
+  const suggestions = (ccDetectedMatches || []).filter(
+    (s) => !q || s.displayName.toLowerCase().includes(q)
+  );
+  const existingIds = new Set(getAllCustomChannels().map((ch) => normaliseName(ch.title)));
+
+  if (!suggestions.length) {
+    grid.innerHTML =
+      '<div class="empty"><div class="empty-icon"><span class="material-icons" style="font-size:48px;color:var(--color-text-disabled);">radar</span></div><div class="empty-text">No multi-source channels detected yet. Open a row builder with TV channels first.</div></div>';
+    if (countEl) countEl.textContent = '0';
+    if (addBtn) addBtn.disabled = true;
+    return;
+  }
+
+  grid.innerHTML = `<div class="poster-grid">${suggestions
+    .map((sug, i) => {
+      const alreadyAdded = existingIds.has(sug.normalizedName);
+      const selected = _scanSelected.has(i);
+      const thumb = sug.logo
+        ? `<img class="poster-image" src="${esc(sug.logo)}" loading="lazy" onerror="this.outerHTML='<div class=\\'poster-image\\' style=\\'display:flex;align-items:center;justify-content:center;\\'><span class=\\'material-icons\\' style=\\'font-size:32px;color:var(--color-text-disabled);\\'>live_tv</span></div>'">`
+        : '<div class="poster-image" style="display:flex;align-items:center;justify-content:center;"><span class="material-icons" style="font-size:32px;color:var(--color-text-disabled);">live_tv</span></div>';
+      return `<div class="poster-card tv suggested${selected ? ' active' : ''}${alreadyAdded ? ' scan-added' : ''}" data-scan-idx="${i}" onclick="toggleScanItem(${i})">
+        ${thumb}
+        <div class="poster-info">
+          <div class="poster-title">${esc(sug.displayName)}</div>
+          <div class="poster-meta">${alreadyAdded ? 'Added' : `${sug.sourceCount} sources`}</div>
+        </div>
+      </div>`;
+    })
+    .join('')}</div>`;
+
+  if (countEl) countEl.textContent = _scanSelected.size;
+  if (addBtn) addBtn.disabled = _scanSelected.size === 0;
+}
+
+function toggleScanItem(idx) {
+  if (_scanSelected.has(idx)) {
+    _scanSelected.delete(idx);
+  } else {
+    _scanSelected.add(idx);
+  }
+  _renderScanGrid();
+}
+
+function toggleScanSelectAll() {
+  const suggestions = ccDetectedMatches || [];
+  if (_scanSelected.size === suggestions.length) {
+    _scanSelected = new Set();
+  } else {
+    _scanSelected = new Set(suggestions.map((_, i) => i));
+  }
+  _renderScanGrid();
+  const btn = document.getElementById('scan-select-all-btn');
+  if (btn)
+    btn.textContent = _scanSelected.size === suggestions.length ? 'Deselect All' : 'Select All';
+}
+
+function addSelectedScanChannels() {
+  if (!_scanSelected.size) return;
+  const suggestions = ccDetectedMatches || [];
+
+  let ccRow = config.rows.find((r) => r.id === 'custom-channels');
+  if (!ccRow) {
+    ccRow = { id: 'custom-channels', name: 'Custom Channels', contentType: 'tv', items: [] };
+    config.rows.push(ccRow);
+  }
+
+  let addedCount = 0;
+  for (const idx of _scanSelected) {
+    const sug = suggestions[idx];
+    if (!sug) continue;
+    const id =
+      'stremirow-' +
+      slugify(sug.displayName) +
+      '-' +
+      Date.now() +
+      '-' +
+      Math.random().toString(36).substring(2, 11);
+    ccRow.items.push({
+      id,
+      type: 'tv',
+      title: sug.displayName,
+      thumbnail: sug.logo || '',
+      description: '',
+      sources: sug.sources.map((src) => ({
+        addonName: src.addonName,
+        addonUrl: src.addonUrl,
+        channelId: src.channelId,
+        channelName: src.channelName,
+        channelLogo: src.channelLogo,
+      })),
+    });
+    addedCount++;
+  }
+
+  markDirty();
+  renderCustomChannelsPanel();
+  renderRows();
+  closeScanModal();
+  toast(`Added ${addedCount} channel${addedCount !== 1 ? 's' : ''}`, 'success');
 }

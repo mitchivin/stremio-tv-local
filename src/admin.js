@@ -80,7 +80,8 @@ function mountAdmin(app, onReload) {
         return res.status(400).json({ error: 'Invalid config shape' });
       console.log('💾 Saving config for user:', userId, 'with', cfg.rows.length, 'rows');
       await storage.saveConfig(cfg, userId);
-      if (onReload) await onReload();
+      // onReload rebuilds in-memory state — skip on serverless where state doesn't persist
+      if (onReload && !process.env.VERCEL) await onReload();
       res.json({ ok: true, rows: cfg.rows.length });
     } catch (e) {
       console.error('❌ Config save error:', e.message, e.stack);
@@ -159,31 +160,32 @@ function mountAdmin(app, onReload) {
       let addons = getResult.result?.addons || [];
       const ourAddonIndex = addons.findIndex((a) => a.manifest?.id === 'com.stremirow.custom');
 
-      if (ourAddonIndex >= 0) {
-        const ourAddon = addons[ourAddonIndex];
-        const manifestUrl = ourAddon.transportUrl;
-
-        try {
-          const manifestRes = await fetch(manifestUrl);
-          if (!manifestRes.ok) {
-            throw new Error(`HTTP ${manifestRes.status}: ${manifestRes.statusText}`);
-          }
-          const freshManifest = await manifestRes.json();
-
-          addons[ourAddonIndex] = {
-            transportUrl: ourAddon.transportUrl,
-            transportName: ourAddon.transportName || '',
-            manifest: freshManifest,
-            flags: ourAddon.flags || {},
-          };
-        } catch (fetchErr) {
-          return res
-            .status(500)
-            .json({ error: 'Failed to fetch fresh manifest: ' + fetchErr.message });
-        }
-      } else {
+      if (ourAddonIndex < 0) {
         return res.json({ ok: true, refreshed: false, message: 'Addon not installed' });
       }
+
+      // Build the fresh manifest directly from the saved config — no HTTP round-trip
+      // This avoids race conditions where a manifest fetch hits a cold/stale server
+      const { buildManifest } = require('./manifest');
+      const freshConfig = await storage.loadConfig(userId);
+      const freshManifest = buildManifest(freshConfig.addon, freshConfig.rows);
+
+      // Stamp a cache-bust token onto each catalog ID in the manifest we push to Stremio.
+      // Stremio caches home-screen rows by catalog ID — changing the ID forces a re-fetch.
+      // The catalog handler on our server strips the suffix when matching rows.
+      const token = Date.now().toString(36);
+      freshManifest.catalogs = freshManifest.catalogs.map((c) => ({
+        ...c,
+        id: `${c.id}__v${token}`,
+      }));
+
+      const ourAddon = addons[ourAddonIndex];
+      addons[ourAddonIndex] = {
+        transportUrl: ourAddon.transportUrl,
+        transportName: ourAddon.transportName || '',
+        manifest: freshManifest,
+        flags: ourAddon.flags || {},
+      };
 
       const setResult = await stremioPost('/api/addonCollectionSet', {
         type: 'AddonCollectionSet',

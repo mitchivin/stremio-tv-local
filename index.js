@@ -106,9 +106,15 @@ app.use(async (req, res, next) => {
   const userIdMatch = req.path.match(/^\/(user-[^/]+)\//);
   const userId = userIdMatch ? userIdMatch[1] : null;
 
+  // Derive base URL from the incoming request so logos resolve correctly in Stremio
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`;
+  const baseUrl = `${proto}://${host}`;
+
   // Load user-specific config and rebuild router
   try {
     const fresh = await loadConfig(userId);
+    fresh.baseUrl = baseUrl;
     currentConfig = fresh;
     rebuildSdkRouter();
   } catch (e) {

@@ -30,12 +30,12 @@ function buildManifest(addonMeta, rows) {
       };
     });
 
-  // We always declare 'catalog' and all content types
-  // so the SDK doesn't crash if they are missing at boot.
-  // The dynamic /manifest.json will still filter what Stremio *sees*.
+  // Use a timestamp-based version so Stremio busts its catalog cache on every save/sync
+  const version = addonMeta.version || `1.0.${Date.now()}`;
+
   return {
     id: 'com.stremirow.custom',
-    version: addonMeta.version || '1.0.0',
+    version,
     name: 'StremiRow',
     description: addonMeta.description || 'Personal curated rows...',
     logo: addonMeta.logo || undefined,

@@ -1,4 +1,4 @@
-/* exported updateTVPanel, onTVAddonChange, applyTVFilter, onCCAddonChange, onCCGenreChange, addAllMultiSourceChannels, renderCCSources, onCCChipDragStart, onCCChipDragOver, onCCChipDrop, removeCCSource */
+/* exported updateTVPanel, onTVAddonChange, applyTVFilter, onCCAddonChange, onCCGenreChange, renderCCSources, onCCChipDragStart, onCCChipDragOver, onCCChipDrop, removeCCSource */
 // ─── TV Channel State
 let ccSources = [];
 let ccAllChannels = [];
@@ -162,62 +162,18 @@ function populateTVAddonDropdown() {
   const addonSel = document.getElementById('tv-addon-select');
   if (!addonSel) return;
   addonSel.innerHTML = '<option value="">All Addons</option>';
-
-  // Add Multi-Source option if suggestions exist
-  if (ccDetectedMatches && ccDetectedMatches.length) {
-    const opt = document.createElement('option');
-    opt.value = '__multi_source__';
-    opt.textContent = 'Multi-Source';
-    addonSel.appendChild(opt);
-  }
-
   tvAddons.forEach((a, i) => {
     const opt = document.createElement('option');
     opt.value = i;
     opt.textContent = a.manifest.name;
     addonSel.appendChild(opt);
   });
-
-  // Always show Custom Channels option if any exist (in rows OR orphans)
-  const allCustomChannels = [
-    ...config.rows.flatMap((r) =>
-      (r.items || []).filter((i) => i.id && i.id.startsWith('stremirow-'))
-    ),
-    ...(window._orphanCustomChannels || []),
-  ];
-  const uniqueCustomChannels = [...new Map(allCustomChannels.map((ch) => [ch.id, ch])).values()];
-
-  if (uniqueCustomChannels.length) {
-    const opt = document.createElement('option');
-    opt.value = '__custom__';
-    opt.textContent = 'Custom Channels';
-    addonSel.appendChild(opt);
-  }
 }
 
 function onTVAddonChange() {
   const sel = document.getElementById('tv-addon-select');
   const val = sel ? sel.value : '';
   const genreSel = document.getElementById('tv-genre-select');
-
-  if (val === '__custom__') {
-    if (genreSel) {
-      genreSel.innerHTML = '<option value="">All Genres</option>';
-      genreSel.disabled = true;
-    }
-    applyTVFilter();
-    return;
-  }
-
-  if (val === '__multi_source__') {
-    if (genreSel) {
-      genreSel.innerHTML = '<option value="">All Genres</option>';
-      genreSel.disabled = true;
-    }
-    applyTVFilter();
-    return;
-  }
-
   const addonIdx = parseInt(val);
   if (!isNaN(addonIdx) && tvAddons[addonIdx]) {
     const addon = tvAddons[addonIdx];
@@ -252,29 +208,6 @@ function applyTVFilter() {
   const genre = document.getElementById('tv-genre-select')?.value || '';
   const q = (document.getElementById('tv-search')?.value || '').toLowerCase();
 
-  if (val === '__custom__') {
-    let channels = getAllCustomChannels().map((ch) => ({
-      id: ch.id,
-      name: ch.title,
-      logo: ch.thumbnail || '',
-      addonName: 'Custom',
-      addonIdx: -1,
-      genres: [],
-    }));
-    if (q) channels = channels.filter((c) => c.name.toLowerCase().includes(q));
-    channels.sort((a, b) => a.name.localeCompare(b.name));
-    renderTVGrid(channels, []);
-    return;
-  }
-
-  if (val === '__multi_source__') {
-    // Show only multi-source suggestions
-    let suggestions = ccDetectedMatches || [];
-    if (q) suggestions = suggestions.filter((s) => s.displayName.toLowerCase().includes(q));
-    renderTVGrid([], suggestions);
-    return;
-  }
-
   const addonIdx = parseInt(val);
   let filtered = ccAllChannels;
   if (!isNaN(addonIdx)) filtered = filtered.filter((c) => c.addonIdx === addonIdx);
@@ -286,39 +219,32 @@ function applyTVFilter() {
   if (q) filtered = filtered.filter((c) => c.name.toLowerCase().includes(q));
   filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
 
-  // Don't show suggestions when browsing individual addons or "All Addons"
-  renderTVGrid(filtered, []);
+  // Show saved multi-source channels above regular channels only when on "All Addons"
+  const saved = !val
+    ? getAllCustomChannels().filter((c) => !q || c.title.toLowerCase().includes(q))
+    : [];
+
+  renderTVGrid(filtered, saved);
 }
 
-function renderTVGrid(channels, suggestions = []) {
+function renderTVGrid(channels, saved = []) {
   const grid = document.getElementById('tv-grid');
   if (!grid) return;
 
   let html = '';
 
-  // Show suggestions if available
-  if (suggestions.length) {
+  // Show saved multi-source channels section above regular channels
+  if (saved.length) {
     html += '<div class="cc-suggestions">';
-    html += '<div class="cc-suggestions-header">Suggested Multi-Source Channels</div>';
-    html += `<div class="poster-grid">${suggestions
-      .map((sug, i) => {
-        const allAdded = sug.sources.every((src) => {
-          const customChannels = getAllCustomChannels();
-          return customChannels.some((ch) =>
-            (ch.sources || []).some(
-              (s) => s.channelId === src.channelId && s.addonUrl === src.addonUrl
-            )
-          );
-        });
-        const inRow = tempRowItems.some(
-          (x) =>
-            x.id && x.id.startsWith('stremirow-') && normaliseName(x.title) === sug.normalizedName
-        );
-        return `<div class="poster-card tv suggested${inRow || allAdded ? ' active' : ''}" data-sug-idx="${i}">
-        ${sug.logo ? `<img class="poster-image" src="${esc(sug.logo)}" loading="lazy" onerror="this.outerHTML='<div class=\\'poster-image\\' style=\\'display:flex;align-items:center;justify-content:center;\\'><span class=\\'material-icons\\' style=\\'font-size:32px;color:var(--color-text-disabled);\\'>live_tv</span></div>'">` : '<div class="poster-image" style="display:flex;align-items:center;justify-content:center;"><span class="material-icons" style="font-size:32px;color:var(--color-text-disabled);">live_tv</span></div>'}
+    html += '<div class="cc-suggestions-header">My Multi-Source Channels</div>';
+    html += `<div class="poster-grid">${saved
+      .map((ch, i) => {
+        const inRow = tempRowItems.some((x) => x.id === ch.id);
+        return `<div class="poster-card tv saved-ms${inRow ? ' active' : ''}" data-saved-idx="${i}">
+        ${ch.thumbnail ? `<img class="poster-image" src="${esc(ch.thumbnail)}" loading="lazy" onerror="this.outerHTML='<div class=\\'poster-image\\' style=\\'display:flex;align-items:center;justify-content:center;\\'><span class=\\'material-icons\\' style=\\'font-size:32px;color:var(--color-text-disabled);\\'>live_tv</span></div>'">` : '<div class="poster-image" style="display:flex;align-items:center;justify-content:center;"><span class="material-icons" style="font-size:32px;color:var(--color-text-disabled);">live_tv</span></div>'}
         <div class="poster-info">
-          <div class="poster-title">${esc(sug.displayName)}</div>
-          <div class="poster-meta">${sug.sourceCount} sources</div>
+          <div class="poster-title">${esc(ch.title)}</div>
+          <div class="poster-meta">${(ch.sources || []).length} sources</div>
         </div>
       </div>`;
       })
@@ -326,25 +252,24 @@ function renderTVGrid(channels, suggestions = []) {
     html += '</div>';
   }
 
-  if (!channels.length && !suggestions.length) {
+  if (!channels.length && !saved.length) {
     grid.innerHTML =
       '<div class="empty"><div class="empty-icon"><span class="material-icons" style="font-size:48px;color:var(--color-text-disabled);">inbox</span></div><div class="empty-text">No channels found.</div></div>';
     return;
   }
 
   if (channels.length) {
+    html += '<div class="cc-suggestions">';
+    html += '<div class="cc-suggestions-header">All Channels</div>';
     html += `<div class="poster-grid">${channels
       .map((ch, i) => {
-        // Check if this channel is in the current row (either as direct channel or as part of a custom channel)
         const inRow = tempRowItems.some((x) => {
-          if (x.id === ch.id) return true; // Direct match
-          // Check if it's part of a custom channel in the row
+          if (x.id === ch.id) return true;
           if (x.id && x.id.startsWith('stremirow-') && x.sources) {
             return x.sources.some((s) => s.channelId === ch.id && s.addonUrl === ch.addonUrl);
           }
           return false;
         });
-
         return `<div class="poster-card tv${inRow ? ' active' : ''}" data-tv-idx="${i}">
         ${ch.logo ? `<img class="poster-image" src="${esc(ch.logo)}" loading="lazy" onerror="this.outerHTML='<div class=\\'poster-image\\' style=\\'display:flex;align-items:center;justify-content:center;\\'><span class=\\'material-icons\\' style=\\'font-size:32px;color:var(--color-text-disabled);\\'>live_tv</span></div>'">` : '<div class="poster-image" style="display:flex;align-items:center;justify-content:center;"><span class="material-icons" style="font-size:32px;color:var(--color-text-disabled);">live_tv</span></div>'}
         <div class="poster-info">
@@ -354,22 +279,31 @@ function renderTVGrid(channels, suggestions = []) {
       </div>`;
       })
       .join('')}</div>`;
+    html += '</div>';
   }
 
   grid.innerHTML = html;
 
-  // Add click handlers for suggestions
-  grid.querySelectorAll('.poster-card.suggested').forEach((el) => {
+  grid.querySelectorAll('.poster-card.saved-ms').forEach((el) => {
     el.addEventListener('click', () => {
-      const idx = parseInt(el.dataset.sugIdx);
-      toggleSuggestedChannelInRow(suggestions[idx]);
+      const ch = saved[parseInt(el.dataset.savedIdx)];
+      const idx = tempRowItems.findIndex((x) => x.id === ch.id);
+      if (idx >= 0) {
+        tempRowItems.splice(idx, 1);
+        toast(`Removed ${ch.title}`, 'success');
+      } else {
+        tempRowItems.push({ ...ch });
+        toast(`Added ${ch.title}`, 'success');
+      }
+      renderRowItems();
+      applyTVFilter();
     });
   });
 
-  // Add click handlers for individual channels
-  grid.querySelectorAll('.poster-card:not(.suggested)').forEach((el) => {
+  grid.querySelectorAll('.poster-card:not(.saved-ms)').forEach((el) => {
     el.addEventListener('click', () => {
       const ch = channels[parseInt(el.dataset.tvIdx)];
+      if (!ch) return;
       toggleActiveRowItem({
         id: ch.id,
         type: 'tv',
@@ -379,63 +313,6 @@ function renderTVGrid(channels, suggestions = []) {
       });
     });
   });
-}
-
-function toggleSuggestedChannelInRow(suggestion) {
-  // Check if already in row
-  const inRow = tempRowItems.some(
-    (x) =>
-      x.id && x.id.startsWith('stremirow-') && normaliseName(x.title) === suggestion.normalizedName
-  );
-
-  if (inRow) {
-    // Remove from row
-    const idx = tempRowItems.findIndex(
-      (x) =>
-        x.id &&
-        x.id.startsWith('stremirow-') &&
-        normaliseName(x.title) === suggestion.normalizedName
-    );
-    if (idx >= 0) {
-      tempRowItems.splice(idx, 1);
-      renderRowItems();
-      applyTVFilter();
-      toast(`Removed ${suggestion.displayName}`, 'success');
-    }
-  } else {
-    // Create custom channel and add to row
-    const id =
-      'stremirow-' +
-      slugify(suggestion.displayName) +
-      '-' +
-      Date.now() +
-      '-' +
-      Math.random().toString(36).substr(2, 9);
-    const item = {
-      id,
-      type: 'tv',
-      title: suggestion.displayName,
-      thumbnail: suggestion.logo || '',
-      description: '',
-      sources: suggestion.sources.map((src) => ({
-        addonName: src.addonName,
-        addonUrl: src.addonUrl,
-        channelId: src.channelId,
-        channelName: src.channelName,
-        channelLogo: src.channelLogo,
-      })),
-    };
-
-    // Add to orphans (will be moved to row on save)
-    if (!window._orphanCustomChannels) window._orphanCustomChannels = [];
-    window._orphanCustomChannels.push(item);
-
-    // Add to row items
-    tempRowItems.push(item);
-    renderRowItems();
-    applyTVFilter();
-    toast(`Added ${suggestion.displayName} with ${suggestion.sourceCount} sources`, 'success');
-  }
 }
 
 function setCCStatus(msg) {
@@ -554,7 +431,7 @@ function buildDetectedMatches() {
   }
 
   ccDetectedMatches = Object.entries(nameMap)
-    .filter(([key, channels]) => {
+    .filter(([, channels]) => {
       const addons = new Set(channels.map((c) => c.addonName));
       return addons.size >= 2;
     })
@@ -601,10 +478,7 @@ function applyCCFilter() {
   if (q) filtered = filtered.filter((c) => c.name.toLowerCase().includes(q));
   filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
 
-  let suggestions = ccDetectedMatches;
-  if (q) suggestions = suggestions.filter((s) => s.displayName.toLowerCase().includes(q));
-
-  renderCCGrid(filtered, suggestions);
+  renderCCGrid(filtered);
 }
 
 let ccDragSrcIdx = null;
@@ -616,7 +490,6 @@ function renderCCSources() {
     el.innerHTML =
       '<span style="font-size:11px;color:var(--color-text-disabled);padding:4px 2px;">Click channels below to add sources</span>';
     if (hint) hint.style.display = '';
-    ccUpdateSourceLogoPreview();
     return;
   }
   if (hint) hint.style.display = 'none';
@@ -631,37 +504,16 @@ function renderCCSources() {
       ondrop="onCCChipDrop(event,${i})"
       ondragend="onCCChipDragEnd()"
       title="Drag to reorder">
-      <span class="source-drag-handle">⠿</span>
       <span class="source-priority${isPrimary ? ' primary' : ''}">${priority}</span>
       <span class="source-name">${esc(s.addonName)}</span>
       <button class="source-remove" onclick="removeCCSource(${i})" title="Remove">×</button>
     </div>`;
     })
     .join('');
-  ccUpdateSourceLogoPreview();
-}
-
-function ccUpdateSourceLogoPreview() {
-  const logoValue = document.getElementById('cc-modal-logo-value');
-  // Only update preview if no custom logo has been chosen
-  if (logoValue && logoValue.value) return;
-  const logoPreview = document.getElementById('cc-modal-logo-preview');
-  const logoPlaceholder = document.getElementById('cc-modal-logo-placeholder');
-  const sourceLogo = ccSources[0]?.channelLogo || '';
-  if (sourceLogo && logoPreview) {
-    logoPreview.src = sourceLogo;
-    logoPreview.style.display = '';
-    if (logoPlaceholder) logoPlaceholder.style.display = 'none';
-  } else {
-    if (logoPreview) logoPreview.style.display = 'none';
-    if (logoPlaceholder) logoPlaceholder.style.display = '';
-  }
-  document.querySelectorAll('.mode-btn').forEach((b) => b.classList.add('mode-disabled'));
 }
 
 function onCCChipDragStart(e, i) {
   ccDragSrcIdx = i;
-  ccDragChannel = null;
   e.dataTransfer.effectAllowed = 'move';
   e.currentTarget.style.opacity = '0.4';
 }
@@ -684,7 +536,7 @@ function onCCChipDrop(e, targetIdx) {
 }
 function onCCChipDragEnd() {
   ccDragSrcIdx = null;
-  renderCCSources();
+  document.querySelectorAll('.source-chip').forEach((el) => (el.style.opacity = ''));
 }
 
 function removeCCSource(i) {
@@ -693,65 +545,31 @@ function removeCCSource(i) {
   applyCCFilter();
 }
 
-function renderCCGrid(channels, suggestions = []) {
+function renderCCGrid(channels) {
   const grid = document.getElementById('cc-grid');
 
-  if (!channels.length && !suggestions.length) {
+  if (!channels.length) {
     grid.innerHTML =
       '<div class="empty"><div class="empty-icon"><span class="material-icons" style="font-size:48px;color:var(--color-text-disabled);">live_tv</span></div><div class="empty-text">No channels found.</div></div>';
     return;
   }
 
-  let html = '';
-
-  if (suggestions.length) {
-    html += '<div class="cc-suggestions">';
-    html += `<div class="cc-suggestions-header"><span>Suggested Multi-Source Channels</span><button class="btn btn-secondary btn-sm" onclick="addAllMultiSourceChannels()"><span class="material-icons">playlist_add</span>Add All</button></div>`;
-    html += `<div class="poster-grid">${suggestions
-      .map((sug, i) => {
-        const allAdded = sug.sources.every((src) =>
-          ccSources.some((s) => s.channelId === src.channelId && s.addonUrl === src.addonUrl)
-        );
-        return `<div class="poster-card tv suggested${allAdded ? ' active' : ''}" data-sug-idx="${i}">
-        ${sug.logo ? `<img class="poster-image" src="${esc(sug.logo)}" loading="lazy" onerror="this.outerHTML='<div class=\\'poster-image\\' style=\\'display:flex;align-items:center;justify-content:center;\\'><span class=\\'material-icons\\' style=\\'font-size:32px;color:var(--color-text-disabled);\\'>live_tv</span></div>'">` : '<div class="poster-image" style="display:flex;align-items:center;justify-content:center;"><span class="material-icons" style="font-size:32px;color:var(--color-text-disabled);">live_tv</span></div>'}
-        <div class="poster-info">
-          <div class="poster-title">${esc(sug.displayName)}</div>
-          <div class="poster-meta">${sug.sourceCount} sources</div>
-        </div>
-      </div>`;
-      })
-      .join('')}</div>`;
-    html += '</div>';
-  }
-
-  if (channels.length) {
-    html += `<div class="poster-grid">${channels
-      .map((ch, i) => {
-        const isSource = ccSources.some((s) => s.channelId === ch.id && s.addonUrl === ch.addonUrl);
-        return `<div class="poster-card tv${isSource ? ' active' : ''}" data-ch-idx="${i}">
+  grid.innerHTML = `<div class="poster-grid">${channels
+    .map((ch, i) => {
+      const isSource = ccSources.some((s) => s.channelId === ch.id && s.addonUrl === ch.addonUrl);
+      return `<div class="poster-card tv${isSource ? ' active' : ''}" data-ch-idx="${i}">
         ${ch.logo ? `<img class="poster-image" src="${esc(ch.logo)}" loading="lazy" onerror="this.outerHTML='<div class=\\'poster-image\\' style=\\'display:flex;align-items:center;justify-content:center;\\'><span class=\\'material-icons\\' style=\\'font-size:32px;color:var(--color-text-disabled);\\'>live_tv</span></div>'">` : '<div class="poster-image" style="display:flex;align-items:center;justify-content:center;"><span class="material-icons" style="font-size:32px;color:var(--color-text-disabled);">live_tv</span></div>'}
         <div class="poster-info">
           <div class="poster-title">${esc(ch.name)}</div>
           <div class="poster-meta">${esc(ch.addonName)}</div>
         </div>
       </div>`;
-      })
-      .join('')}</div>`;
-  }
+    })
+    .join('')}</div>`;
 
-  grid.innerHTML = html;
-
-  grid.querySelectorAll('.poster-card.suggested').forEach((el) => {
+  grid.querySelectorAll('.poster-card').forEach((el) => {
     el.addEventListener('click', () => {
-      const idx = parseInt(el.dataset.sugIdx);
-      toggleSuggestedChannel(suggestions[idx]);
-    });
-  });
-
-  grid.querySelectorAll('.poster-card:not(.suggested)').forEach((el) => {
-    el.addEventListener('click', () => {
-      const idx = parseInt(el.dataset.chIdx);
-      toggleCCSource(channels[idx]);
+      toggleCCSource(channels[parseInt(el.dataset.chIdx)]);
     });
   });
 }
@@ -767,41 +585,6 @@ function toggleCCSource(ch) {
       channelName: ch.name,
       channelLogo: ch.logo || '',
     });
-  renderCCSources();
-  applyCCFilter();
-}
-
-function toggleSuggestedChannel(suggestion) {
-  const allAdded = suggestion.sources.every((src) =>
-    ccSources.some((s) => s.channelId === src.channelId && s.addonUrl === src.addonUrl)
-  );
-
-  if (allAdded) {
-    suggestion.sources.forEach((src) => {
-      const idx = ccSources.findIndex(
-        (s) => s.channelId === src.channelId && s.addonUrl === src.addonUrl
-      );
-      if (idx >= 0) ccSources.splice(idx, 1);
-    });
-    toast(`Removed ${suggestion.displayName}`, 'success');
-  } else {
-    suggestion.sources.forEach((src) => {
-      const exists = ccSources.some(
-        (s) => s.channelId === src.channelId && s.addonUrl === src.addonUrl
-      );
-      if (!exists) {
-        ccSources.push({
-          addonName: src.addonName,
-          addonUrl: src.addonUrl,
-          channelId: src.channelId,
-          channelName: src.channelName,
-          channelLogo: src.channelLogo,
-        });
-      }
-    });
-    toast(`Added ${suggestion.displayName} with ${suggestion.sourceCount} sources`, 'success');
-  }
-
   renderCCSources();
   applyCCFilter();
 }
@@ -845,66 +628,4 @@ function onCCAddonChange() {
 
 function onCCGenreChange() {
   applyCCFilter();
-}
-
-function addAllMultiSourceChannels() {
-  if (!ccDetectedMatches.length) {
-    toast('No multi-source channels detected', 'error');
-    return;
-  }
-
-  const count = ccDetectedMatches.length;
-  if (
-    !confirm(`Add all ${count} multi-source channel${count !== 1 ? 's' : ''} as custom channels?`)
-  )
-    return;
-
-  // Find or create the "Custom Channels" row
-  let ccRow = config.rows.find((r) => r.id === 'custom-channels');
-  if (!ccRow) {
-    ccRow = { id: 'custom-channels', name: 'Custom Channels', contentType: 'tv', items: [] };
-    config.rows.push(ccRow);
-  }
-
-  let addedCount = 0;
-  const existingIds = new Set(getAllCustomChannels().map((ch) => ch.id));
-
-  for (const suggestion of ccDetectedMatches) {
-    const id =
-      'stremirow-' +
-      slugify(suggestion.displayName) +
-      '-' +
-      Date.now() +
-      '-' +
-      Math.random().toString(36).substr(2, 9);
-
-    const item = {
-      id,
-      type: 'tv',
-      title: suggestion.displayName,
-      thumbnail: suggestion.logo || '',
-      description: '',
-      sources: suggestion.sources.map((src) => ({
-        addonName: src.addonName,
-        addonUrl: src.addonUrl,
-        channelId: src.channelId,
-        channelName: src.channelName,
-        channelLogo: src.channelLogo,
-      })),
-    };
-
-    ccRow.items.push(item);
-    existingIds.add(id);
-    addedCount++;
-  }
-
-  if (addedCount > 0) {
-    markDirty();
-    renderCustomChannelsPanel();
-    renderRows();
-    closeCCModal();
-    toast(`Added ${addedCount} multi-source channel${addedCount !== 1 ? 's' : ''}`, 'success');
-  } else {
-    toast('All multi-source channels already exist', 'success');
-  }
 }

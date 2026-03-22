@@ -78,8 +78,10 @@ function toast(msg, type = 'success') {
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => (el.className = 'toast'), 4000);
 }
+let _saveTimer = null;
 function markDirty() {
-  saveAll();
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(saveAll, 300);
 }
 
 // ─── Logo Easter Egg
@@ -110,9 +112,6 @@ function collectSettings() {
 async function saveAll() {
   await ensureUserId();
   collectSettings();
-  const parts = (config.addon.version || '1.0.0').split('.').map(Number);
-  parts[2] = (parts[2] || 0) + 1;
-  config.addon.version = parts.join('.');
 
   // Store orphan custom channels in config
   if (window._orphanCustomChannels && window._orphanCustomChannels.length) {
@@ -304,7 +303,7 @@ function renderLoggedOutState() {
 
   if (channelsContainer) {
     channelsContainer.innerHTML =
-      '<div class="empty-state"><div class="empty-icon"><span class="material-icons">lock</span></div><div class="empty-title">Connect Stremio Account</div><div class="empty-text">Sign in to create and manage custom channels</div></div>';
+      '<div class="empty-state"><div class="empty-icon"><span class="material-icons">lock</span></div><div class="empty-title">Connect Stremio Account</div><div class="empty-text">Sign in to create and manage multi-source channels</div></div>';
   }
 
   renderInstallTab();

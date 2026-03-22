@@ -14,24 +14,16 @@
   padding: var(--space-2);
 }
 
-.row-thumbnail-grid.tv-grid {
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: repeat(3, 1fr);
-  grid-auto-rows: 1fr;
-}
-
-.row-thumbnail-grid.tv-grid > * {
-  aspect-ratio: 1;
-  width: 100%;
-  height: auto;
-}
-
-.row-thumbnail-grid img,
-.row-thumbnail-grid.tv-grid img {
+.row-thumbnail-grid img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   border-radius: var(--radius-sm);
+}
+
+.row-thumbnail-grid.tv-grid {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: repeat(3, 1fr);
 }
 
 .row-thumbnail-grid.tv-grid img {

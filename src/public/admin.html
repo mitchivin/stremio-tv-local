@@ -61,9 +61,6 @@
             <div class="section-header">
               <div class="section-header-text">
                 <h2 class="section-title">Custom Rows</h2>
-                <span class="section-subtitle"
-                  >· Organize your content into curated collections</span
-                >
               </div>
               <div class="section-actions">
                 <button class="btn btn-secondary btn-sm" onclick="openBuilderModal()">
@@ -79,19 +76,20 @@
             <div id="rows-container"></div>
           </section>
 
-          <!-- Custom Channels Section -->
+          <!-- Multi-Source Channels Section -->
           <section class="content-section">
             <div class="section-header">
               <div class="section-header-text">
-                <h2 class="section-title">Custom Channels</h2>
-                <span class="section-subtitle"
-                  >· Multi-source TV channels with automatic fallback</span
-                >
+                <h2 class="section-title">Multi-Source Channels</h2>
               </div>
               <div class="section-actions">
+                <button class="btn btn-secondary btn-sm" onclick="openScanModal()">
+                  <span class="material-icons">radar</span>
+                  Scan
+                </button>
                 <button class="btn btn-secondary btn-sm" onclick="newCustomChannel()">
                   <span class="material-icons">add</span>
-                  New Channel
+                  Custom
                 </button>
                 <button class="btn btn-danger-outline btn-sm" onclick="deleteAllCustomChannels()">
                   <span class="material-icons">delete_sweep</span>
@@ -266,57 +264,13 @@
         </div>
 
         <div class="modal-body">
-          <!-- Logo and Sources Row -->
-          <div class="cc-layout-row">
-            <!-- Logo Panel (Left) -->
-            <div class="cc-logo-panel">
-              <div class="cc-zone-header">
-                <div class="cc-zone-label">Logo</div>
-              </div>
-              <div class="cc-logo-content">
-                <div
-                  class="channel-logo-container modal-logo"
-                  id="cc-modal-logo-wrap"
-                >
-                  <img
-                    class="channel-logo"
-                    id="cc-modal-logo-preview"
-                    src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="
-                    style="object-fit: contain; display: none"
-                  />
-                  <span id="cc-modal-logo-placeholder"
-                    ><span
-                      class="material-icons"
-                      style="font-size: 48px; color: var(--color-text-disabled)"
-                      >live_tv</span
-                    ></span
-                  >
-                </div>
-                <div class="logo-mode-toggle">
-                  <button class="mode-btn fit active" onclick="ccSetLogoMode('fit')" title="Fit">
-                    <span class="material-icons">fit_screen</span>
-                  </button>
-                  <button class="mode-btn fill" onclick="ccSetLogoMode('fill')" title="Fill">
-                    <span class="material-icons">aspect_ratio</span>
-                  </button>
-                </div>
-              </div>
-              <input type="hidden" id="cc-modal-logo-value" value="" />
-              <input type="hidden" id="cc-modal-mode-value" value="fit" />
-              <input type="hidden" id="cc-modal-raw-logo" value="" />
+          <!-- Sources -->
+          <div class="cc-sources-row">
+            <div class="cc-zone-header">
+              <div class="cc-zone-label">Sources</div>
+              <div class="cc-zone-hint" id="cc-sources-hint">click channels below to add</div>
             </div>
-
-            <!-- Sources Panel (Right) -->
-            <div class="cc-sources-panel">
-              <div class="cc-zone-header">
-                <div class="cc-zone-label">Sources</div>
-                <div class="cc-zone-hint" id="cc-sources-hint">click channels below to add</div>
-              </div>
-              <div
-                id="cc-sources-list"
-                class="cc-sources-container"
-              ></div>
-            </div>
+            <div id="cc-sources-list" class="cc-sources-container"></div>
           </div>
 
           <!-- Toolbar -->
@@ -445,6 +399,34 @@
       </div>
     </div>
 
+    <!-- Scan Modal -->
+    <div class="modal-overlay" id="scan-modal">
+      <div class="modal modal-large">
+        <div class="modal-header">
+          <h3 class="modal-title">Scan Multi-Source Channels</h3>
+          <div class="modal-actions">
+            <button class="btn btn-ghost btn-sm" onclick="closeScanModal()">Cancel</button>
+            <button class="btn btn-primary btn-sm" id="scan-add-btn" onclick="addSelectedScanChannels()" disabled>Add Selected (<span id="scan-selected-count">0</span>)</button>
+          </div>
+        </div>
+        <div class="builder-toolbar">
+          <div class="search-wrapper">
+            <span class="material-icons search-icon">search</span>
+            <input class="search-input" id="scan-search" type="search" placeholder="Search channels…" oninput="filterScanGrid()" />
+          </div>
+        </div>
+        <div class="modal-body">
+          <div class="builder-status" id="scan-load-status" style="display:none;padding:var(--space-3) var(--space-4);font-size:12px;color:var(--color-accent-primary);flex-shrink:0;"></div>
+          <div class="builder-browse">
+            <div id="scan-grid"></div>
+          </div>
+        </div>
+        <div class="modal-large-footer">
+          <button class="btn btn-ghost btn-sm" id="scan-select-all-btn" onclick="toggleScanSelectAll()">Select All</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Logo Picker Modal -->
     <div class="logo-picker-overlay" id="logo-picker-modal">
       <div class="logo-picker-panel">
@@ -452,8 +434,38 @@
           <span class="logo-picker-title">Select Logo</span>
           <button class="logo-picker-close" onclick="closeLogoPicker()">×</button>
         </div>
-        <div class="logo-picker-grid" id="logo-picker-grid">
-          <!-- Populated by JS -->
+        <div class="logo-picker-body">
+          <!-- Left: Preview + controls -->
+          <div class="logo-picker-left">
+            <div class="lp-preview-label">Preview</div>
+            <div class="lp-preview-wrap" id="lp-preview-wrap">
+              <img id="lp-preview-img" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="" style="display:none;" />
+              <span id="lp-preview-placeholder" class="material-icons">live_tv</span>
+            </div>
+            <button class="lp-upload-btn" onclick="lpTriggerUpload()">
+              <span class="material-icons">upload</span>
+              Upload
+            </button>
+            <input type="file" id="lp-upload-input" accept="image/*" style="display:none;" onchange="lpHandleUpload(event)" />
+            <div class="lp-mode-toggle">
+              <button class="lp-mode-btn fit active" id="lp-mode-fit" onclick="lpSetMode('fit')" title="Fit">
+                Fit
+              </button>
+              <button class="lp-mode-btn fill" id="lp-mode-fill" onclick="lpSetMode('fill')" title="Fill">
+                Fill
+              </button>
+            </div>
+            <div class="lp-spacer"></div>
+            <button class="lp-apply-btn" id="lp-apply-btn" onclick="lpApplyLogo()" disabled>
+              Apply
+            </button>
+          </div>
+          <!-- Right: Logo grid -->
+          <div class="logo-picker-right">
+            <div class="logo-picker-grid" id="logo-picker-grid">
+              <!-- Populated by JS -->
+            </div>
+          </div>
         </div>
       </div>
     </div>

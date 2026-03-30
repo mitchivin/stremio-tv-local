@@ -11,6 +11,8 @@
 
 'use strict';
 
+const { fetchResilient } = require('./fetch-utils');
+
 /**
  * Build a Stremio MetaPreview for a movie/series/tv-type item (library or external addon item).
  * The id must match what external addons expect (IMDB ID or addon-specific ID).
@@ -106,8 +108,20 @@ function registerHandlers(builder, configProvider) {
       const src = sources[srcIdx];
       try {
         const url = `${src.addonUrl}/stream/tv/${encodeURIComponent(src.channelId)}.json`;
-        const res = await fetch(url, { headers: { 'User-Agent': 'stremirow/1.0' } });
-        if (!res.ok) continue;
+        
+        // Use resilient fetch with timeouts and retry
+        const res = await fetchResilient(url, {
+          timeout: 5000,
+          maxRetries: 2,
+          retryDelay: 300,
+          headers: { 'User-Agent': 'stremirow/1.0' }
+        });
+        
+        if (!res.ok) {
+          console.warn(`[stream] Source ${srcIdx} returned status ${res.status}: ${src.addonUrl}`);
+          continue;
+        }
+        
         const data = await res.json();
         const priority = srcIdx === 0 ? 'Primary' : `Backup ${srcIdx}`;
         (data.streams || []).forEach((s) => {

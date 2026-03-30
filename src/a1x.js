@@ -9,13 +9,12 @@
 const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 
 const A1X_SOURCES = [
-  'https://a1xs.vip/a1xstream',
-  'https://raw.githubusercontent.com/a1xmedia/m3u/main/a1x.m3u',
+  'http://aflaxtv.xyz:8080/get.php?username=F36591&password=3f1a2b5c&type=m3u_plus&output=ts',
 ];
 
 const FETCH_HEADERS = {
   'User-Agent':
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
   Accept: '*/*',
 };
 
@@ -36,98 +35,70 @@ const NEWS_CHANNELS = new Set([
   'MS NOW',
 ]);
 
-const EXCLUDED_CHANNELS = new Set([
-  'IRE: Premier Sports 1 FHD',
-  'IRE: Premier Sports 2 FHD',
-  'DE: Sportdigital Fussball FHD',
-  'DE: Sky Sport Bundesliga FHD',
-  'DE: Sky Sport Top Event FHD',
-  'DE: Sky Sport Premier League FHD',
-  'AL: Super Sport 1 FHD',
-  'AL: Super Sport 2 FHD',
-  'AL: Super Sport 3 FHD',
-  'NL: Ziggo Sport FHD',
-  'NL: Ziggo Sport 2 FHD',
-  'NL: Ziggo Sport 3 FHD',
-  'NL: Ziggo Sport 4 FHD',
-  'Star Sports Select 1 FHD',
-  'Star Sports Select 2 FHD',
-  'Now Sports PL 1 FHD',
-  'Now Sports PL 2 FHD',
-  'Astro Premier League',
-  'Astro Premier League 2',
-  'Astro Grandstand',
-  'Hub Premier 1 FHD',
-  'Hub Premier 2 FHD',
-  'Hub Premier 3 FHD',
-  'Hub Premier 4 FHD',
-  'MY: Astro Sports UHD',
-  'HK: Now Sports 1 4k',
-  'SG: Hub Premier 2 UHD',
-  'SE: V Sport Ultra HD',
-  'IRIB UHD',
-  'Fashion TV UHD',
-  'MyZen 4K (Multi Audio)',
-  'HOME 4K',
-  'MUSEUM TV 4K',
-  'Loupe 4K',
-  'Travelxp 4K',
-  'Love Nature 4K',
-]);
+const EXCLUDED_CHANNELS = new Set([]);
 
 const GROUP_TO_CATEGORY = {
-  'NZ Sports': 'Sports',
-  'AU Sports': 'Sports',
-  'UK Sports': 'Sports',
-  'US Sports': 'Sports',
-  'CA Sports': 'Sports',
-  EPL: 'Sports',
-  'UHD | 4K': 'Sports',
+  // Sports
+  'UK \u27be Sports': 'Sports',
+  'UK \u27be Football': 'Sports',
+  'USA \u27be Sports': 'Sports',
+  'USA \u27be MLS': 'Sports',
+  'Australia': 'Sports',
+  'New Zealand': 'Sports',
+  'EFL PPV': 'Sports',
+  'DAZN PPV NFL': 'Sports',
   'Live Event | PPV': 'Sports',
-  'EU Sports': 'Sports',
-  'World Sports': 'Sports',
-  'UK Channels': 'Entertainment',
-  'US Channels': 'Entertainment',
-  'CA Channels': 'Entertainment',
+
+  // Entertainment
+  'UK': 'Entertainment',
+  'USA': 'Entertainment',
+  'Australia': 'Entertainment',
+
+  // News
+  'UK \u27be News': 'News',
+  'USA \u27be News': 'News',
 };
+
+
 
 // AU IPTV channel IDs -> A1X M3U channel name (backup stream handler)
 const AU_ID_TO_A1X_NAME = {
-  'au|SP:nz_sports|SKY.Sport.1.nz|tv': 'SKY Sport 1 NZ',
-  'au|SP:nz_sports|SKY.Sport.2.nz|tv': 'SKY Sport 2 NZ',
-  'au|SP:nz_sports|SKY.Sport.3.nz|tv': 'SKY Sport 3 NZ',
-  'au|SP:nz_sports|SKY.Sport.4.nz|tv': 'SKY Sport 4 NZ',
-  'au|SP:nz_sports|SKY.Sport.5.nz|tv': 'SKY Sport 5 NZ',
-  'au|SP:nz_sports|SKY.Sport.6.nz|tv': 'SKY Sport 6 NZ',
-  'au|SP:nz_sports|SKY.Sport.7.nz|tv': 'SKY Sport 7 NZ',
-  'au|SP:au_sports|FoxCricket.au|tv': 'Fox Sports 501 FHD',
-  'au|SP:au_sports|FoxLeague.au|tv': 'Fox Sports 502 FHD',
-  'au|SP:au_sports|FoxSports503.au|tv': 'Fox Sports 503 FHD',
-  'au|SP:au_sports|FoxFooty.au|tv': 'Fox Sports 504 FHD',
-  'au|SP:au_sports|FoxSports505.au|tv': 'Fox Sports 505 FHD',
-  'au|SP:au_sports|FoxSports506.au|tv': 'Fox Sports 506 FHD',
-  'au|SP:au_sports|FoxSportsMore.au|tv': 'Fox Sports 507 FHD',
-  'au|SP:uk_sports|SkySp.PL.HD.uk|tv': 'Sky Sports Premier League FHD',
-  'au|SP:uk_sports|SkySp.News.HD.uk|tv': 'Sky Sports News FHD',
-  'au|SP:uk_sports|SkySp.F1.uk|tv': 'Sky Sports F1 FHD',
-  'au|SP:uk_sports|SkySp.Fball.HD.uk|tv': 'Sky Sports Football FHD',
-  'au|SP:uk_sports|SkySpCricket.HD.uk|tv': 'Sky Sports Cricket FHD',
-  'au|SP:uk_sports|SkySp.Golf.HD.uk|tv': 'Sky Sports Golf FHD',
-  'au|SP:uk_sports|SkySp.Mix.HD.uk|tv': 'Sky Sports Mix FHD',
-  'au|SP:uk_sports|SkySp.Racing.HD.uk|tv': 'Sky Sports Racing FHD',
-  'au|SP:uk_sports|SkySp.ActionHD.uk|tv': 'Sky Sports Action FHD',
-  'au|SP:uk_sports|SkySp.Tennis.HD.uk|tv': 'Sky Sports Tennis FHD',
-  'au|SP:uk_sports|SkySp+HD.uk|tv': 'Sky Sports+ FHD',
-  'au|SP:uk_sports|TNT.Sports.1.HD.uk|tv': 'TNT Sports 1 FHD',
-  'au|SP:uk_sports|TNT.Sports.2.HD.uk|tv': 'TNT Sports 2 FHD',
-  'au|SP:uk_sports|TNT.Sports.3.HD.uk|tv': 'TNT Sports 3 FHD',
-  'au|SP:uk_sports|TNT.Sports.4.HD.uk|tv': 'TNT Sports 4 FHD',
-  'au|SP:us_sports|ESPN.HD.us2|tv': 'ESPN HD',
-  'au|SP:us_sports|ESPN2.HD.us2|tv': 'ESPN2 HD',
-  'au|SP:us_sports|ESPNEWS.HD.us2|tv': 'ESPN News HD',
+  'au|SP:nz_sports|SKY.Sport.1.nz|tv': 'Sky Sport 1',
+  'au|SP:nz_sports|SKY.Sport.2.nz|tv': 'Sky Sport 2',
+  'au|SP:nz_sports|SKY.Sport.3.nz|tv': 'Sky Sport 3',
+  'au|SP:nz_sports|SKY.Sport.4.nz|tv': 'Sky Sport 4',
+  'au|SP:nz_sports|SKY.Sport.5.nz|tv': 'Sky Sport 5',
+  'au|SP:nz_sports|SKY.Sport.6.nz|tv': 'Sky Sport 6',
+  'au|SP:nz_sports|SKY.Sport.7.nz|tv': 'Sky Sport 7',
+  'au|SP:au_sports|FoxCricket.au|tv': 'Fox Sports 501',
+  'au|SP:au_sports|FoxLeague.au|tv': 'Fox Sports 502',
+  'au|SP:au_sports|FoxSports503.au|tv': 'Fox Sports 503',
+  'au|SP:au_sports|FoxFooty.au|tv': 'Fox Sports 504',
+  'au|SP:au_sports|FoxSports505.au|tv': 'Fox Sports 505',
+  'au|SP:au_sports|FoxSports506.au|tv': 'Fox Sports 506',
+  'au|SP:au_sports|FoxSportsMore.au|tv': 'Fox Sports 507',
+  'au|SP:uk_sports|SkySp.PL.HD.uk|tv': 'Sky Sports Premier League',
+  'au|SP:uk_sports|SkySp.News.HD.uk|tv': 'Sky Sports News',
+  'au|SP:uk_sports|SkySp.F1.uk|tv': 'Sky Sports F1',
+  'au|SP:uk_sports|SkySp.Fball.HD.uk|tv': 'Sky Sports Football',
+  'au|SP:uk_sports|SkySpCricket.HD.uk|tv': 'Sky Sports Cricket',
+  'au|SP:uk_sports|SkySp.Golf.HD.uk|tv': 'Sky Sports Golf',
+  'au|SP:uk_sports|SkySp.Mix.HD.uk|tv': 'Sky Sports Mix',
+  'au|SP:uk_sports|SkySp.Racing.HD.uk|tv': 'Sky Sports Racing',
+  'au|SP:uk_sports|SkySp.ActionHD.uk|tv': 'Sky Sports Action',
+  'au|SP:uk_sports|SkySp.Tennis.HD.uk|tv': 'Sky Sports Tennis',
+  'au|SP:uk_sports|SkySp+HD.uk|tv': 'Sky Sports+',
+  'au|SP:uk_sports|TNT.Sports.1.HD.uk|tv': 'TNT Sports 1',
+  'au|SP:uk_sports|TNT.Sports.2.HD.uk|tv': 'TNT Sports 2',
+  'au|SP:uk_sports|TNT.Sports.3.HD.uk|tv': 'TNT Sports 3',
+  'au|SP:uk_sports|TNT.Sports.4.HD.uk|tv': 'TNT Sports 4',
+  'au|SP:us_sports|ESPN.HD.us2|tv': 'ESPN',
+  'au|SP:us_sports|ESPN2.HD.us2|tv': 'ESPN2',
+  'au|SP:us_sports|ESPNEWS.HD.us2|tv': 'ESPN News',
   'au|SP:us_sports|NBA.TV.HD.us2|tv': 'NBA TV',
   'au|SP:us_sports|NFL.Network.HD.us2|tv': 'NFL Network',
 };
+
 
 let cache = null;
 
@@ -191,12 +162,22 @@ async function getCache() {
     } else {
       category = GROUP_TO_CATEGORY[entry.group];
       if (!category) continue;
+
+      // ── Special Filtering for Mixed Groups (AU/NZ) ──
+      // If it's a Sports category but in a general AU/NZ group, 
+      // only include it if the name suggests it's a sports channel.
+      if (category === 'Sports' && (entry.group === 'Australia' || entry.group === 'New Zealand')) {
+        const isSport = /sport|fox|espn|optus|stan|racing|cricket|footy|league|grandstand|ufc|nba|nfl|mlb/i.test(entry.name);
+        if (!isSport) continue;
+      }
+
       id = `a1x-${slugify(category)}-${slugify(entry.name)}`;
     }
     if (seen[category].has(id)) continue;
     seen[category].add(id);
     byCategory[category].push({ id, name: entry.name, logo: entry.logo, url: entry.url, category });
   }
+
 
   const allEntries = {};
   const byName = {};

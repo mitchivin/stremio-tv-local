@@ -22,6 +22,7 @@ const { buildManifest } = require('./src/manifest');
 const { registerHandlers } = require('./src/handlers');
 const { mountAdmin } = require('./src/admin');
 const a1xRouter = require('./src/a1x');
+const { fetchResilient } = require('./src/fetch-utils');
 
 // ── 1. App State & Manifest ────────────────────────────────────────────────
 let currentConfig;
@@ -50,13 +51,192 @@ function rebuildSdkRouter() {
 
 // ── 2. Build Express app ───────────────────────────────────────────────────
 const app = express();
-const PORT = parseInt(process.env.PORT || '7000', 10);
+const PORT = parseInt(process.env.PORT || '7001', 10);
 
 app.use(express.json({ limit: '5mb' }));
 app.use((req, res, next) => {
+  console.log(`[REQ] ${new Date().toLocaleTimeString()} ${req.method} ${req.url}`);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', '*');
   next();
+});
+
+// Raw HLS Helper — MOVE TO TOP TO PREVENT INTERCEPTION
+app.get('/hls-helper', async (req, res) => {
+  const urlStr = req.query.url;
+  if (!urlStr) return res.status(400).send('url required');
+
+  try {
+    let targetUrl = urlStr;
+
+    // ── EXTRACTION: cdn-live.tv player pages ──
+    if (urlStr.includes('cdn-live.tv/api/v1/channels/player/')) {
+      console.log(`[proxy] 🔍 Detected player page, extracting stream: ${urlStr}`);
+      try {
+        const pRes = await fetchResilient(urlStr, {
+          timeout: 5000,
+          maxRetries: 2,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+          }
+        });
+        if (pRes.ok) {
+          const html = await pRes.text();
+          // Look for any .m3u8 pattern in the HTML (usually in a script tag)
+          const m3u8Match = html.match(/https?:\/\/[^"'\s]+\.m3u8[^"'\s]*/);
+          if (m3u8Match) {
+            targetUrl = m3u8Match[0];
+            console.log(`[proxy] ✨ Extracted stream URL: ${targetUrl}`);
+          } else {
+            console.warn(`[proxy] ⚠️ No M3U8 found in player page, falling back to original URL.`);
+          }
+        }
+      } catch (extractErr) {
+        console.warn(`[proxy] ⚠️ M3U8 extraction failed: ${extractErr.message}. Using original URL.`);
+      }
+    }
+
+    const url = new URL(targetUrl);
+    const headers = {
+      'User-Agent':
+        req.headers['user-agent'] ||
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      Referer: 'https://streamversea.site/',
+      Origin: 'https://streamversea.site/',
+      Accept: '*/*',
+      'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'cross-site',
+    };
+
+    console.log(`[proxy] 🌐 Fetching: ${targetUrl}`);
+    const response = await fetchResilient(targetUrl, {
+      timeout: 10000,
+      maxRetries: 2,
+      retryDelay: 1000,
+      headers,
+      redirect: 'follow'
+    });
+
+    if (!response.ok) {
+      console.error(`[proxy] ❌ FAILED ${targetUrl} - Status: ${response.status}`);
+      return res.status(response.status).send(`Proxy failed: ${response.statusText}`);
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
+    // If it's a manifest, rewrite relative and absolute URLs
+    if (
+      targetUrl.includes('.m3u8') ||
+      contentType.includes('mpegurl') ||
+      contentType.includes('apple')
+    ) {
+      const text = await response.text();
+      
+      // CRITICAL Check: Are we getting a security challenge (JS/HTML)?
+      if (!text.trim().startsWith('#EXTM3U')) {
+        console.warn(`[proxy] ⚠️  Not an M3U8! Saving challenge to debug_challenge.html`);
+        const fs = require('fs');
+        fs.writeFileSync('debug_challenge.html', text);
+        res.setHeader('Content-Type', contentType || 'text/html');
+        return res.send(text);
+      }
+
+      console.log(`[proxy] 🛠️  Rewriting M3U8 (${text.length} bytes)`);
+      const baseUrl = targetUrl.split('?')[0].substring(0, targetUrl.split('?')[0].lastIndexOf('/') + 1);
+      const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+      const host = req.headers['x-forwarded-host'] || req.headers.host || `localhost:7001`;
+
+      const rewritten = text
+        .split('\n')
+        .map((line) => {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) return line;
+
+          try {
+            let absoluteUrl = trimmed.startsWith('http') ? trimmed : new URL(trimmed, baseUrl).href;
+            return `${proto}://${host}/hls-helper?url=${encodeURIComponent(absoluteUrl)}`;
+          } catch (e) {
+            return line;
+          }
+        })
+        .join('\n');
+
+      res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+      return res.send(rewritten);
+    }
+
+    // Binary / TS segments
+    if (contentType) res.setHeader('Content-Type', contentType);
+    const { Readable } = require('stream');
+    Readable.fromWeb(response.body).pipe(res);
+  } catch (err) {
+    console.error(`[proxy] 💥 GLOBAL ERROR:`, err.message);
+    if (!res.headersSent) res.status(500).send(err.message);
+  }
+});
+
+// ── NEW: RU CDN HTML Proxy ──
+app.get('/cdn-proxy', async (req, res) => {
+  const urlStr = req.query.url;
+  if (!urlStr) return res.status(400).send('url required');
+
+  try {
+    console.log(`[cdn-proxy] 🧼 Cleaning player: ${urlStr}`);
+    const response = await fetchResilient(urlStr, {
+      timeout: 8000,
+      maxRetries: 2,
+      retryDelay: 500,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Referer': 'https://cdn-live.tv/'
+      }
+    });
+
+    if (!response.ok) return res.status(response.status).send('Proxy failed');
+
+    let html = await response.text();
+
+    // 1. Strip Ad Scripts & Popups
+    html = html.replace(/<script[^>]+acscdn\.com[^>]+><\/script>/gi, '<!-- aclib removed -->');
+    html = html.replace(/<script[^>]+al5sm\.com[^>]+><\/script>/gi, '<!-- al5sm removed -->');
+    html = html.replace(/<script[^>]+nap5k\.com[^>]+><\/script>/gi, '<!-- nap5k removed -->');
+    html = html.replace(/<script[^>]+monetag[^>]+><\/script>/gi, '<!-- monetag removed -->');
+    html = html.replace(/<meta[^>]+monetag[^>]+>/gi, '<!-- monetag meta removed -->');
+    
+    // 2. Strip Anti-Devtool (This fixes the "Embedding Not Allowed" error)
+    html = html.replace(/<script[^>]+disable-devtool[^>]+><\/script>/gi, '<!-- disable-devtool removed -->');
+    
+    // 3. Strip Histats & Hit trackers
+    html = html.replace(/<!-- Histats\.com[\s\S]+?Histats\.com[\s\S]+?-->/gi, '<!-- histats removed -->');
+    html = html.replace(/<noscript>[\s\S]+?histats\.com[\s\S]+?<\/noscript>/gi, '');
+
+    // 4. Strip Any Inline Ad Scripts (aclib.runPop etc)
+    html = html.replace(/aclib\.runPop\(\{[\s\S]+?\}\);/gi, '/* runPop removed */');
+
+    // 5. Fix Relative Links (ensure assets still load from cdn-live.tv)
+    const base = 'https://cdn-live.tv';
+    html = html.replace(/(src|href)="\/([^/][^"]*)"/gi, `$1=\"${base}/$2\"`);
+
+    // 6. Inject CSS to hide potential ad containers
+    const cleanStyles = `
+      <style>
+        #aclib-popup-container, .monetag-ad, div[id*="zone-"], iframe[src*="monetag"] { display: none !important; }
+        body { background: #000 !important; }
+      </style>
+    `;
+    html = html.replace('</head>', `${cleanStyles}</head>`);
+
+    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(html);
+  } catch (err) {
+    console.error(`[cdn-proxy] 💥 Error:`, err.message);
+    res.status(500).send(err.message);
+  }
 });
 
 // User ID generation endpoint
@@ -121,6 +301,7 @@ app.use(async (req, res, next) => {
   if (
     req.path.startsWith('/api/') ||
     req.path.startsWith('/admin') ||
+    req.path === '/hls-helper' ||
     req.path === '/manifest.json' ||
     req.path.endsWith('/manifest.json')
   )
@@ -162,6 +343,8 @@ app.use(async (req, res, next) => {
 app.get('/', (_req, res) => {
   res.redirect('/admin');
 });
+
+
 
 // Serve manifest dynamically — always load fresh config so Vercel cold starts
 // don't serve a stale/empty manifest from an old in-memory state

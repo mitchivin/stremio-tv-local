@@ -55,6 +55,8 @@ function mountAdmin(app, onReload) {
     'admin-ui-tv.js',
     'admin-ui-channels.js',
     'admin-ui-auth.js',
+    'test-player.html',
+    'cdn-player.html',
   ];
   for (const file of staticFiles) {
     app.get(`/${file}`, (_req, res) => res.sendFile(path.join(PUBLIC_DIR, file)));

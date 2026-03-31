@@ -80,6 +80,47 @@ function registerHandlers(builder, configProvider) {
   });
 
   // ── Stream handler for custom channels ────────────────────────────────────
+  
+  // Helper: Resolve channel by name + source type (survives ID changes)
+  async function resolveChannelId(addonUrl, channelName, sourceType) {
+    try {
+      // Fetch current catalog from MIPTV
+      const catalogUrl = `${addonUrl}/catalog/tv/miptv-combined-channels.json`;
+      const res = await fetchResilient(catalogUrl, {
+        timeout: 5000,
+        maxRetries: 1,
+        headers: { 'User-Agent': 'stremirow/1.0' }
+      });
+      
+      if (!res.ok) return null;
+      
+      const data = await res.json();
+      const channels = data.metas || [];
+      
+      // Find matching channel by name (case-insensitive, ignore [BU] suffix)
+      const normalizedSearch = channelName.toLowerCase().replace(/\s*\[bu\]$/i, '').trim();
+      
+      for (const ch of channels) {
+        const normalizedCh = (ch.name || '').toLowerCase().replace(/\s*\[bu\]$/i, '').trim();
+        if (normalizedCh === normalizedSearch) {
+          // Check if source type matches
+          const isBackup = ch.id && ch.id.startsWith('miptv-backup-');
+          const isPrimary = ch.id && ch.id.match(/^miptv-(primary|news|sports|entertainment)-/);
+          
+          if (sourceType === 'backup' && isBackup) return ch.id;
+          if (sourceType === 'primary' && isPrimary) return ch.id;
+          // If no source type specified, return first match
+          if (!sourceType) return ch.id;
+        }
+      }
+      
+      return null;
+    } catch (e) {
+      console.error('[resolveChannelId] Failed:', e.message);
+      return null;
+    }
+  }
+  
   builder.defineStreamHandler(async function ({ id }) {
     if (!id.startsWith('stremirow-')) return { streams: [] };
     const config = configProvider();
@@ -107,7 +148,20 @@ function registerHandlers(builder, configProvider) {
     for (let srcIdx = 0; srcIdx < sources.length; srcIdx++) {
       const src = sources[srcIdx];
       try {
-        const url = `${src.addonUrl}/stream/tv/${encodeURIComponent(src.channelId)}.json`;
+        // Use name-based lookup if available, fallback to stored ID
+        let resolvedId = src.channelId;
+        if (src.channelName) {
+          const sourceType = src.sourceType || (src.channelId?.includes('backup') ? 'backup' : 'primary');
+          const lookedUp = await resolveChannelId(src.addonUrl, src.channelName, sourceType);
+          if (lookedUp) {
+            resolvedId = lookedUp;
+            console.log(`[stream] Resolved "${src.channelName}" → ${lookedUp}`);
+          } else {
+            console.warn(`[stream] Could not resolve "${src.channelName}", using stored ID`);
+          }
+        }
+        
+        const url = `${src.addonUrl}/stream/tv/${encodeURIComponent(resolvedId)}.json`;
         
         // Use resilient fetch with timeouts and retry
         const res = await fetchResilient(url, {
@@ -123,9 +177,18 @@ function registerHandlers(builder, configProvider) {
         }
         
         const data = await res.json();
-        const priority = srcIdx === 0 ? 'Primary' : `Backup ${srcIdx}`;
+        const sourceName = srcIdx === 0 ? 'Primary' : `Backup ${srcIdx}`;
         (data.streams || []).forEach((s) => {
-          streams.push({ ...s, name: src.addonName || s.name, title: priority });
+          // Extract URL from the stream for the title
+          let streamUrl = s.url || '';
+          let urlTitle;
+          try {
+            const urlObj = new URL(streamUrl);
+            urlTitle = urlObj.hostname.replace(/^www\./, '');
+          } catch {
+            urlTitle = streamUrl.split('/')[2] || streamUrl.substring(0, 30);
+          }
+          streams.push({ ...s, name: sourceName, title: urlTitle });
         });
       } catch (e) {
         console.error(`[stream] failed ${src.addonUrl}:`, e.message);

@@ -630,6 +630,7 @@ function addSelectedScanChannels() {
         channelId: src.channelId,
         channelName: src.channelName,
         channelLogo: src.channelLogo,
+        sourceType: src.sourceType,
       })),
     });
     addedCount++;

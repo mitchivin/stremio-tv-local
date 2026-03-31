@@ -507,6 +507,7 @@ function buildDetectedMatches() {
             channelId: ch.id,
             channelName: ch.name,
             channelLogo: ch.logo || '',
+            sourceType: ch.id.startsWith('miptv-backup-') ? 'backup' : 'primary',
           });
         }
       }
@@ -670,6 +671,7 @@ function toggleCCSource(ch) {
       channelId: ch.id,
       channelName: ch.name,
       channelLogo: ch.logo || '',
+      sourceType: ch.id.startsWith('miptv-backup-') ? 'backup' : 'primary',
     });
   renderCCSources();
   applyCCFilter();

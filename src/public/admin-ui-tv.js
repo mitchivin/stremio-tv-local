@@ -357,7 +357,15 @@ async function loadAllCCChannels() {
   await Promise.all(
     tvAddons.map(async (addon, addonIdx) => {
       console.log(`[CC] Loading addon ${addonIdx}: ${addon.manifest.name}`);
-      const baseUrl = addon.transportUrl.replace('/manifest.json', '');
+      let baseUrl = addon.transportUrl.replace('/manifest.json', '');
+      
+      // Fix localhost URLs when running on remote deployment
+      if (baseUrl.includes('127.0.0.1') || baseUrl.includes('localhost')) {
+        const currentOrigin = window.location.origin;
+        const path = baseUrl.replace(/^https?:\/\/[^/]+/, '');
+        baseUrl = currentOrigin + path;
+        console.log(`[CC] Fixed localhost URL to: ${baseUrl}`);
+      }
       const cats = (addon.manifest.catalogs || []).filter(
         (c) => c.type === 'tv' || c.type === 'channel'
       );

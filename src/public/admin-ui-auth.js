@@ -1,4 +1,4 @@
-/* exported confirmLogout, syncStremio, installStremio, renderInstallTab, copyInstallUrl, copyA1xUrl, installA1x, sidebarDoLogin */
+/* exported confirmLogout, syncStremio, installStremio, renderInstallTab, copyInstallUrl, copyMiptv_Url, installMiptv, sidebarDoLogin */
 /* global _saveTimer */
 'use strict';
 
@@ -186,7 +186,7 @@ function renderInstallTab() {
     ? `${location.origin}/${userId}/manifest.json`
     : `${location.origin}/manifest.json`;
   document.getElementById('set-install-url').value = manifestUrl;
-  document.getElementById('a1x-install-url').value = location.origin + '/a1x/manifest.json';
+  document.getElementById('miptv-install-url').value = location.origin + '/miptv-combined/manifest.json';
 }
 
 function copyInstallUrl() {
@@ -196,15 +196,15 @@ function copyInstallUrl() {
   toast('URL copied to clipboard!', 'success');
 }
 
-function copyA1xUrl() {
-  const el = document.getElementById('a1x-install-url');
+function copyMiptv_Url() {
+  const el = document.getElementById('miptv-install-url');
   el.select();
   document.execCommand('copy');
-  toast('A1X URL copied!', 'success');
+  toast('MIPTV URL copied!', 'success');
 }
 
-function installA1x() {
-  const manifestUrl = location.origin + '/a1x/manifest.json';
+function installMiptv() {
+  const manifestUrl = location.origin + '/miptv-combined/manifest.json';
   if (location.protocol === 'http:') {
     prompt(
       'Local Addons must be pasted into Stremio manually.\n\nCopy this link and paste it into the Stremio search bar:',

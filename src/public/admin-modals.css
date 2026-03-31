@@ -278,7 +278,7 @@
   line-height: 1.6;
 }
 
-.a1x-card {
+.miptv-card {
   margin-top: var(--space-6);
   padding: var(--space-5);
   background: var(--color-surface-raised);
@@ -286,14 +286,14 @@
   border-radius: var(--radius-lg);
 }
 
-.a1x-title {
+.miptv-title {
   font-size: 16px;
   font-weight: 700;
   color: var(--color-text-primary);
   margin-bottom: var(--space-2);
 }
 
-.a1x-desc {
+.miptv-desc {
   font-size: 13px;
   color: var(--color-text-secondary);
   margin-bottom: var(--space-4);

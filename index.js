@@ -21,7 +21,7 @@ const { loadConfig } = require('./src/loader');
 const { buildManifest } = require('./src/manifest');
 const { registerHandlers } = require('./src/handlers');
 const { mountAdmin } = require('./src/admin');
-const a1xRouter = require('./src/a1x');
+const miptv_CombinedRouter = require('./src/miptv-combined');
 const { fetchResilient } = require('./src/fetch-utils');
 
 // ── 1. App State & Manifest ────────────────────────────────────────────────
@@ -246,8 +246,37 @@ app.post('/api/user/generate', (_req, res) => {
   res.json({ userId });
 });
 
-// A1X IPTV addon — mounted at /a1x/
-app.use('/a1x', a1xRouter);
+// Proxy catalog endpoint — used by admin UI to scan addon channels
+app.get('/api/stremio/proxy-catalog', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: 'url required' });
+
+  try {
+    console.log(`[proxy-catalog] Fetching: ${url}`);
+    const response = await fetchResilient(url, {
+      timeout: 8000,
+      maxRetries: 2,
+      retryDelay: 500,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      }
+    });
+
+    if (!response.ok) {
+      console.warn(`[proxy-catalog] Failed: ${response.status} ${url}`);
+      return res.status(response.status).json({ metas: [] });
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error(`[proxy-catalog] Error: ${err.message}`);
+    res.status(500).json({ metas: [] });
+  }
+});
+
+// MIPTV Combined addon (local M3U sources) — mounted at /miptv-combined/
+app.use('/miptv-combined', miptv_CombinedRouter);
 
 // Logo proxy — fetches a remote image, applies fit/fill, returns processed PNG
 app.get('/api/logos/proxy', async (req, res) => {

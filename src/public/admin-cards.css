@@ -56,6 +56,7 @@
   overflow: hidden;
   cursor: pointer;
   transition: all var(--transition-fast);
+  position: relative;
 }
 
 .poster-card:hover {
@@ -64,6 +65,27 @@
   box-shadow:
     var(--shadow-md),
     0 0 20px var(--color-accent-glow);
+}
+
+.poster-card:hover::after {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-surface-overlay);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+  white-space: pre-wrap;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  z-index: 1000;
+  box-shadow: var(--shadow-lg);
+  max-width: 200px;
+  word-wrap: break-word;
+  pointer-events: none;
 }
 
 .poster-card.active {

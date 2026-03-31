@@ -9,7 +9,7 @@ A self-hosted Stremio addon that lets you build custom home-screen rows and mult
 - **My Rows** — curate movie, series, or TV channel rows that appear on your Stremio home screen
 - **Custom Channels** — build virtual TV channels that aggregate streams from multiple IPTV addons, with per-source label/title overrides
 - **Auto-Detect** — automatically finds channels that appear across 2+ of your addons and offers to create them
-- **A1X IPTV** — bundled live TV addon mounted at `/a1x/`
+- **MIPTV** — bundled live TV addon mounted at `/miptv/`
 - **Cloud Persistence** — config stored in a private GitHub Gist (or local file for dev)
 - **Stremio Account Sync** — log in once to browse your installed addons' catalogs
 
@@ -37,7 +37,7 @@ node index.js
 
 Admin panel: `http://127.0.0.1:7000/admin`
 Manifest URL: `http://127.0.0.1:7000/manifest.json`
-A1X manifest: `http://127.0.0.1:7000/a1x/manifest.json`
+MIPTV manifest: `http://127.0.0.1:7000/miptv/manifest.json`
 
 ### Vercel Deployment
 
@@ -59,7 +59,7 @@ stremiRow/
     ├── admin.css         # Admin panel styles
     ├── admin-ui.js       # Admin panel client-side JS
     ├── admin.js          # Admin API routes + static file serving
-    ├── a1x.js            # A1X IPTV addon router
+    ├── miptv.js          # MIPTV addon router
     ├── handlers.js       # Stremio catalog/meta/stream handlers
     ├── loader.js         # Config loader + validation
     ├── manifest.js       # Stremio manifest builder
@@ -74,7 +74,7 @@ stremiRow/
 |-----|-------------|
 | `/admin` | Admin panel |
 | `/manifest.json` | StremiRow addon manifest |
-| `/a1x/manifest.json` | A1X IPTV addon manifest |
+| `/miptv/manifest.json` | MIPTV addon manifest |
 | `/logos/:id.png` | Channel logo assets |
 | `/api/config` | GET/PUT addon config |
 | `/api/stremio/addons` | Fetch user's Stremio addon collection |

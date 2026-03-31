@@ -12,6 +12,7 @@ function normaliseName(n) {
     .toLowerCase()
     .replace(/\b(fhd|uhd|hd|4k|sd)\b/g, '')
     .replace(/\b(nz|au|uk|us|ca|ie|de|nl|al|se|sg|hk|my)\b/g, '')
+    .replace(/\[bu\]|\[bkp\]|\[backup\]/g, '')  // Strip backup indicators
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
@@ -77,6 +78,7 @@ function isCCFiltered(name) {
 }
 
 async function updateTVPanel() {
+  console.log('[CC] updateTVPanel called');
   const body = document.getElementById('tv-body');
   if (!body) return;
 
@@ -99,6 +101,7 @@ async function updateTVPanel() {
   setCCStatus('Checking account…');
 
   if (ccAllChannels.length && tvAddons.length) {
+    console.log(`[CC] Using cached channels: ${ccAllChannels.length}`);
     // Ensure detected matches are built if not already
     if (!ccDetectedMatches || !ccDetectedMatches.length) {
       buildDetectedMatches();
@@ -115,6 +118,7 @@ async function updateTVPanel() {
     .then((r) => r.json())
     .catch(() => null);
   if (!auth || !auth.loggedIn) {
+    console.log('[CC] Not logged in');
     body.innerHTML = `<div class="empty" style="padding:40px 0;text-align:center;">
       <div class="empty-icon"><span class="material-icons" style="font-size:48px;color:var(--color-text-disabled);">lock</span></div>
       <div class="empty-text" style="margin-bottom:12px;">Sign in to browse TV Channels</div>
@@ -125,10 +129,12 @@ async function updateTVPanel() {
   }
 
   if (!tvAddons.length) {
+    console.log('[CC] Fetching addons from API');
     setCCStatus('Loading addons…');
     try {
       const resp = await fetch(`/api/stremio/addons${getUserParam()}`);
       if (resp.status === 401) {
+        console.log('[CC] Auth failed');
         body.innerHTML =
           '<div class="empty"><div class="empty-icon"><span class="material-icons" style="font-size:48px;color:var(--color-text-disabled);">lock</span></div><div class="empty-text">Session expired. Please sign in again.</div></div>';
         if (toolbar) toolbar.style.display = 'none';
@@ -136,7 +142,9 @@ async function updateTVPanel() {
       }
       const d = await resp.json();
       tvAddons = (d.addons || []).filter(isTvAddon);
+      console.log(`[CC] Fetched ${tvAddons.length} TV addons`);
     } catch (e) {
+      console.error('[CC] Error fetching addons:', e);
       setCCStatus('');
       body.innerHTML = `<div class="empty"><div class="empty-icon"><span class="material-icons" style="font-size:48px;color:var(--color-error);">error</span></div><div class="empty-text">${esc(e.message)}</div></div>`;
       return;
@@ -144,6 +152,7 @@ async function updateTVPanel() {
   }
 
   if (!tvAddons.length) {
+    console.log('[CC] No TV addons found');
     body.innerHTML =
       '<div class="empty"><div class="empty-icon"><span class="material-icons" style="font-size:48px;color:var(--color-text-disabled);">signal_cellular_connected_no_internet_0_bar</span></div><div class="empty-text">No IPTV or TV addons found.</div></div>';
     if (toolbar) toolbar.style.display = 'none';
@@ -153,6 +162,7 @@ async function updateTVPanel() {
   populateTVAddonDropdown();
 
   if (!ccAllChannels.length) {
+    console.log('[CC] Loading all channels');
     await loadAllCCChannels();
   }
   applyTVFilter();
@@ -329,7 +339,9 @@ function setCCStatus(msg) {
 }
 
 async function loadAllCCChannels() {
+  console.log('[CC] loadAllCCChannels started, tvAddons:', tvAddons.length);
   if (!tvAddons.length) {
+    console.log('[CC] No TV addons found');
     renderCCGrid([]);
     setCCStatus('');
     return;
@@ -344,6 +356,7 @@ async function loadAllCCChannels() {
 
   await Promise.all(
     tvAddons.map(async (addon, addonIdx) => {
+      console.log(`[CC] Loading addon ${addonIdx}: ${addon.manifest.name}`);
       const baseUrl = addon.transportUrl.replace('/manifest.json', '');
       const cats = (addon.manifest.catalogs || []).filter(
         (c) => c.type === 'tv' || c.type === 'channel'
@@ -373,20 +386,41 @@ async function loadAllCCChannels() {
         )
       );
 
+      console.log(`[CC] Addon ${addonIdx} fetched ${results.length} catalog results`);
+      let totalMetas = 0;
+      results.forEach((r) => totalMetas += (r.metas || []).length);
+      console.log(`[CC] Addon ${addonIdx} total metas: ${totalMetas}`);
+
       const seen = new Set(ccAllChannels.map((c) => c.id + '|' + c.addonUrl + '|' + c.genre));
+      // Track normalized names per addon to deduplicate within same source
+      const seenByAddonAndName = new Map();
+      
       results.forEach((d, i) => {
         const genre = urlPairs[i].genre;
         (d.metas || []).forEach((m) => {
           const key = m.id + '|' + baseUrl + '|' + genre;
           if (m && m.id && !seen.has(key) && !isCCFiltered(m.name)) {
+            // Normalize name for deduplication (remove region prefixes like "AU: ", "NZ: ")
+            const normalizedName = m.name.replace(/^(AU|NZ|US):\s*/i, '').trim();
+            const addonSourceKey = baseUrl + '|' + normalizedName;
+            
+            // Skip if we already have this normalized name from this addon/source
+            if (seenByAddonAndName.has(addonSourceKey)) {
+              console.log(`[CC] Skipping duplicate: ${normalizedName} from addon ${addonIdx}`);
+              return;
+            }
+            seenByAddonAndName.set(addonSourceKey, true);
+            
             seen.add(key);
             const existing = ccAllChannels.find((c) => c.id === m.id && c.addonUrl === baseUrl);
             if (existing) {
               existing.genres.push(genre);
+              console.log(`[CC] Added genre to existing: ${normalizedName}`);
             } else {
+              console.log(`[CC] Adding new channel: ${normalizedName} (ID: ${m.id})`);
               ccAllChannels.push({
                 id: m.id,
-                name: m.name,
+                name: normalizedName,
                 logo: m.poster || m.logo || '',
                 addonName: addon.manifest.name,
                 addonUrl: baseUrl,
@@ -411,6 +445,9 @@ async function loadAllCCChannels() {
 
   buildDetectedMatches();
 
+  console.log(`[CC] Final: ${ccAllChannels.length} channels loaded`);
+  console.log('[CC] All channels:', ccAllChannels.map(c => ({ name: c.name, id: c.id, addon: c.addonName })));
+
   setCCStatus(
     `${ccAllChannels.length} channels from ${tvAddons.length} addon${tvAddons.length !== 1 ? 's' : ''}`
   );
@@ -430,17 +467,32 @@ function buildDetectedMatches() {
     nameMap[key].push(ch);
   }
 
+  // Helper to determine source type from channel ID (for MIPTV)
+  function getSourceType(channel) {
+    const id = channel.id || '';
+    if (id.startsWith('miptv-backup2-')) return 'backup2';
+    if (id.startsWith('miptv-backup-')) return 'backup';
+    if (id.match(/^miptv-(news|sports|entertainment)-/)) return 'primary';
+    // For non-MIPTV channels, use addonName as the source type
+    return channel.addonName;
+  }
+
   ccDetectedMatches = Object.entries(nameMap)
     .filter(([, channels]) => {
       const addons = new Set(channels.map((c) => c.addonName));
-      return addons.size >= 2;
+      const sourceTypes = new Set(channels.map(getSourceType));
+      // Multi-source = either from 2+ addons OR 2+ different source types within same addon
+      return addons.size >= 2 || sourceTypes.size >= 2;
     })
     .map(([key, channels]) => {
-      const seenAddons = new Set();
+      const seenSources = new Set();
       const sources = [];
       for (const ch of channels) {
-        if (!seenAddons.has(ch.addonName)) {
-          seenAddons.add(ch.addonName);
+        const sourceType = getSourceType(ch);
+        // Unique by source type (for MIPTV) or by addon name (for other addons)
+        const uniqueKey = ch.id.startsWith('miptv-') ? sourceType : ch.addonName;
+        if (!seenSources.has(uniqueKey)) {
+          seenSources.add(uniqueKey);
           sources.push({
             addonName: ch.addonName,
             addonUrl: ch.addonUrl,
@@ -465,19 +517,40 @@ function buildDetectedMatches() {
 function applyCCFilter() {
   const sel = document.getElementById('cc-addon-select');
   const addonIdx = sel ? parseInt(sel.value) : NaN;
-  const genre = document.getElementById('cc-genre-select')?.value || '';
+  const addon = !isNaN(addonIdx) ? tvAddons[addonIdx] : null;
+  const isMIPTVAllSources = addon && addon.manifest.id === 'org.miptv-combined.iptv';
+  
+  const filterVal = document.getElementById('cc-genre-select')?.value || '';
   const q = (document.getElementById('cc-search')?.value || '').toLowerCase();
 
   let filtered = ccAllChannels;
-  if (!isNaN(addonIdx)) filtered = filtered.filter((c) => c.addonIdx === addonIdx);
-  if (genre) {
-    filtered = filtered.filter((c) => c.genres.includes(genre));
-  } else {
+  
+  // Filter by addon
+  if (!isNaN(addonIdx)) {
+    filtered = filtered.filter((c) => c.addonIdx === addonIdx);
+  }
+  
+  // Filter by source (for MIPTV) or genre (for others)
+  if (isMIPTVAllSources && filterVal) {
+    if (filterVal === 'primary') {
+      filtered = filtered.filter((c) => c.id.match(/^miptv-(news|sports|entertainment)-/));
+    } else if (filterVal === 'backup') {
+      filtered = filtered.filter((c) => c.id.startsWith('miptv-backup-') && !c.id.startsWith('miptv-backup2-'));
+    } else if (filterVal === 'backup2') {
+      filtered = filtered.filter((c) => c.id.startsWith('miptv-backup2-'));
+    }
+  } else if (!isMIPTVAllSources && filterVal) {
+    filtered = filtered.filter((c) => c.genres.includes(filterVal));
+  } else if (!isMIPTVAllSources) {
     filtered = filtered.filter((c) => c.genres.some((g) => !isCCFilteredGenre(g)));
   }
-  if (q) filtered = filtered.filter((c) => c.name.toLowerCase().includes(q));
+  
+  // Filter by search
+  if (q) {
+    filtered = filtered.filter((c) => c.name.toLowerCase().includes(q));
+  }
+  
   filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
-
   renderCCGrid(filtered);
 }
 
@@ -546,9 +619,11 @@ function removeCCSource(i) {
 }
 
 function renderCCGrid(channels) {
+  console.log(`[CC] renderCCGrid called with ${channels.length} channels`);
   const grid = document.getElementById('cc-grid');
 
   if (!channels.length) {
+    console.log('[CC] No channels to render');
     grid.innerHTML =
       '<div class="empty"><div class="empty-icon"><span class="material-icons" style="font-size:48px;color:var(--color-text-disabled);">live_tv</span></div><div class="empty-text">No channels found.</div></div>';
     return;
@@ -557,11 +632,14 @@ function renderCCGrid(channels) {
   grid.innerHTML = `<div class="poster-grid">${channels
     .map((ch, i) => {
       const isSource = ccSources.some((s) => s.channelId === ch.id && s.addonUrl === ch.addonUrl);
-      return `<div class="poster-card tv${isSource ? ' active' : ''}" data-ch-idx="${i}">
+      const sourceType = ch.id.startsWith('miptv-backup2-') ? 'Backup2 Source' : ch.id.startsWith('miptv-backup-') ? 'Backup Source' : 'Primary Source';
+      console.log(`[CC] Rendering channel: ${ch.name} (${ch.id}) - Type: ${sourceType}`);
+      const tooltipText = `${esc(ch.name)}\n${sourceType}\nID: ${esc(ch.id)}`;
+      return `<div class="poster-card tv${isSource ? ' active' : ''}" data-ch-idx="${i}" title="${tooltipText}">
         ${ch.logo ? `<img class="poster-image" src="${esc(ch.logo)}" loading="lazy" onerror="this.outerHTML='<div class=\\'poster-image\\' style=\\'display:flex;align-items:center;justify-content:center;\\'><span class=\\'material-icons\\' style=\\'font-size:32px;color:var(--color-text-disabled);\\'>live_tv</span></div>'">` : '<div class="poster-image" style="display:flex;align-items:center;justify-content:center;"><span class="material-icons" style="font-size:32px;color:var(--color-text-disabled);">live_tv</span></div>'}
         <div class="poster-info">
           <div class="poster-title">${esc(ch.name)}</div>
-          <div class="poster-meta">${esc(ch.addonName)}</div>
+          <div class="poster-meta">${sourceType}</div>
         </div>
       </div>`;
     })
@@ -596,27 +674,53 @@ function onCCAddonChange() {
 
   if (!isNaN(addonIdx) && tvAddons[addonIdx]) {
     const addon = tvAddons[addonIdx];
-    const genres = new Set();
-    (addon.manifest.catalogs || [])
-      .filter((c) => c.type === 'tv' || c.type === 'channel')
-      .forEach((cat) => {
-        const genreExtra = (cat.extra || []).find((e) => e.name === 'genre');
-        if (genreExtra && genreExtra.options) {
-          genreExtra.options.filter((g) => !isCCFilteredGenre(g)).forEach((g) => genres.add(g));
-        }
-      });
-    if (genreSel) {
-      genreSel.innerHTML =
-        '<option value="">All Genres</option>' +
-        Array.from(genres)
-          .sort()
-          .map((g) => `<option value="${esc(g)}">${esc(g)}</option>`)
-          .join('');
-      genreSel.disabled = false;
+    
+    // Check if this is MIPTV (All Sources)
+    const isMIPTVAllSources = addon.manifest.id === 'org.miptv-combined.iptv';
+    
+    if (isMIPTVAllSources) {
+      // Show source dropdown instead of genres
+      if (genreSel) {
+        genreSel.innerHTML = `
+          <option value="">All Sources</option>
+          <option value="primary">Primary Source</option>
+          <option value="backup">Backup Source</option>
+          <option value="backup2">Backup2 Source</option>
+        `;
+        genreSel.disabled = false;
+        // Change label if possible
+        const label = document.querySelector('label[for="cc-genre-select"]');
+        if (label) label.textContent = 'Source:';
+      }
+    } else {
+      // Normal genre dropdown for other addons
+      const genres = new Set();
+      (addon.manifest.catalogs || [])
+        .filter((c) => c.type === 'tv' || c.type === 'channel')
+        .forEach((cat) => {
+          const genreExtra = (cat.extra || []).find((e) => e.name === 'genre');
+          if (genreExtra && genreExtra.options) {
+            genreExtra.options.filter((g) => !isCCFilteredGenre(g)).forEach((g) => genres.add(g));
+          }
+        });
+      if (genreSel) {
+        genreSel.innerHTML =
+          '<option value="">All Genres</option>' +
+          Array.from(genres)
+            .sort()
+            .map((g) => `<option value="${esc(g)}">${esc(g)}</option>`)
+            .join('');
+        genreSel.disabled = false;
+        // Reset label
+        const label = document.querySelector('label[for="cc-genre-select"]');
+        if (label) label.textContent = 'Genre:';
+      }
     }
   } else if (genreSel) {
     genreSel.innerHTML = '<option value="">All Genres</option>';
     genreSel.disabled = true;
+    const label = document.querySelector('label[for="cc-genre-select"]');
+    if (label) label.textContent = 'Genre:';
   }
 
   if (!ccAllChannels.length) {

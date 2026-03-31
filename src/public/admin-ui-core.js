@@ -92,10 +92,10 @@ function onLogoClick(event) {
   logoClicks.push(now);
   logoClicks = logoClicks.filter((t) => now - t < 10000);
   if (logoClicks.length >= 7) {
-    const a1xSection = document.getElementById('a1x-section');
-    if (a1xSection) {
-      a1xSection.style.display = 'block';
-      toast('A1X IPTV unlocked!', 'success');
+    const miptv_Section = document.getElementById('miptv-section');
+    if (miptv_Section) {
+      miptv_Section.style.display = 'block';
+      toast('MIPTV unlocked!', 'success');
     }
     logoClicks = [];
   }

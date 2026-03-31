@@ -17,21 +17,5 @@ http://aflaxtv.xyz:8080/F36591/3f1a2b5c/144772
 http://aflaxtv.xyz:8080/F36591/3f1a2b5c/279033
 #EXTINF:-1 tvg-logo="http://s3.i3ns.net:2052/portal/picon/2021-09/8967fe172d45a59f3ec20039bcf2ae47.png" group-title="AU & NZ Sports",Fox Sports 507
 http://aflaxtv.xyz:8080/F36591/3f1a2b5c/280194
-#EXTINF:-1 tvg-logo="https://i.ibb.co.com/n1GRXhD/Skysport-shareext.png" group-title="UK Sport",SkySports Main Event
-http://185.160.192.64:80/mangin15/85784/215920
-#EXTINF:-1 tvg-logo="https://i.ibb.co.com/n1GRXhD/Skysport-shareext.png" group-title="UK Sport",SkySports Premier League
-http://185.160.192.64:80/mangin15/85784/215918
-#EXTINF:-1 tvg-logo="https://i.ibb.co.com/n1GRXhD/Skysport-shareext.png" group-title="UK Sport",SkySports Football
-http://185.160.192.64:80/mangin15/85784/215916
-#EXTINF:-1 tvg-logo="https://i.ibb.co.com/n1GRXhD/Skysport-shareext.png" group-title="UK Sport",SkySports Golf
-http://185.160.192.64:80/mangin15/85784/215912
-#EXTINF:-1 tvg-logo="https://i.ibb.co.com/n1GRXhD/Skysport-shareext.png" group-title="UK Sport",SkySports F1
-http://185.160.192.64:80/mangin15/85784/215910
-#EXTINF:-1 tvg-logo="https://i.ibb.co.com/n1GRXhD/Skysport-shareext.png" group-title="UK Sport",SkySports News
-http://185.160.192.64:80/mangin15/85784/215904
 #EXTINF:-1 tvg-logo="http://schedulesdirect-api20141201-logos.s3.dualstack.us-east-1.amazonaws.com/stationLogos/s49438_dark_360w_270h.png" group-title="Documentaries",National Geographic
 http://23.237.104.106:8080/USA_NAT_GEO/index.m3u8
-#EXTINF:-1 tvg-logo="https://bugsfreeweb.github.io/LiveTVCollector/BugsfreeLogo/default-logo.png" group-title="US Sport",Golf Channel SD
-https://tvpass.org/live/GolfChannel/sd
-#EXTINF:-1 tvg-logo="http://schedulesdirect-api20141201-logos.s3.dualstack.us-east-1.amazonaws.com/stationLogos/s45654_dark_360w_270h.png" group-title="US Sport",ESPN U
-http://mytvstream.net:8080/live/30550113/30550113/2210

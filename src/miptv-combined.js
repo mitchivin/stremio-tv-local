@@ -242,12 +242,22 @@ builder.defineStreamHandler(async ({ id }) => {
     if (id.startsWith('miptv-')) {
       const ch = allChannels.find(c => c.id === id);
       if (!ch) return { streams: [] };
-      let sourceName = 'MIPTV';
-      if (ch.source === 'backup') sourceName = 'MIPTV Backup';
-      else if (ch.source === 'backup2') sourceName = 'MIPTV Backup2';
+      let sourceName = 'Primary';
+      if (ch.source === 'backup') sourceName = 'Backup';
+      else if (ch.source === 'backup2') sourceName = 'Backup2';
+      
+      // Extract domain from URL for the title
+      let urlTitle;
+      try {
+        const urlObj = new URL(ch.url);
+        urlTitle = urlObj.hostname.replace(/^www\./, '');
+      } catch {
+        urlTitle = ch.url.split('/')[2] || ch.url.substring(0, 30);
+      }
+      
       return {
         streams: [
-          { url: ch.url, name: sourceName, title: ch.name, behaviorHints: { notWebReady: false } },
+          { url: ch.url, name: sourceName, title: urlTitle, behaviorHints: { notWebReady: false } },
         ],
       };
     }

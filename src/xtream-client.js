@@ -87,20 +87,30 @@ class XtreamClient {
   }
 
   /**
-   * Convert Xtream stream to MIPTV format
+   * Convert Xtream stream to MIPTV format with category mapping
    */
-  convertToMIPTVFormat(streams) {
+  convertToMIPTVFormat(streams, categoryMap) {
     return streams.map(stream => {
-      const categoryName = this.sanitizeCategoryName(stream.category_name || 'Unknown');
-      const streamUrl = this.getStreamUrl(stream.stream_id, stream.container_extension || 'm3u8');
+      // Look up category name by ID
+      let categoryName = 'Unknown';
+      if (stream.category_id && categoryMap[stream.category_id]) {
+        categoryName = categoryMap[stream.category_id];
+      } else if (stream.category_name) {
+        categoryName = stream.category_name;
+      }
+      
+      const sanitizedCategory = this.sanitizeCategoryName(categoryName);
+      // Use 'ts' (MPEG-TS) format for more stable live TV streaming
+      const streamUrl = this.getStreamUrl(stream.stream_id, 'ts');
       
       return {
         name: stream.name || 'Unknown Channel',
         url: streamUrl,
-        group: categoryName,
+        group: sanitizedCategory,
         logo: stream.stream_icon || '',
         id: stream.stream_id,
-        epg_id: stream.epg_channel_id || ''
+        epg_id: stream.epg_channel_id || '',
+        category_id: stream.category_id
       };
     });
   }
@@ -110,26 +120,49 @@ class XtreamClient {
    */
   sanitizeCategoryName(name) {
     if (!name) return 'Unknown';
+    // Keep more characters, just trim and basic cleanup
     return name
-      .replace(/[^a-zA-Z0-9 &\-]/g, '')
-      .trim();
+      .replace(/[^\w\s&|\.\/\-\(\)\[\]]/g, '')
+      .trim() || 'Unknown';
   }
 
   /**
-   * Get channels formatted for MIPTV
+   * Get channels formatted for MIPTV with proper category mapping
    */
   async getMIPTVChannels() {
     try {
+      // Fetch categories first to build ID mapping
+      console.log('[Xtream] Fetching categories...');
+      const categories = await this.getLiveCategories();
+      console.log(`[Xtream] Got ${categories.length} categories`);
+      
+      // Build category ID to name map
+      const categoryMap = {};
+      categories.forEach(cat => {
+        if (cat.category_id && cat.category_name) {
+          categoryMap[cat.category_id] = cat.category_name;
+        }
+      });
+      
+      // Debug: log first few categories
+      const catIds = Object.keys(categoryMap).slice(0, 5);
+      console.log('[Xtream] Sample categories:', catIds.map(id => `${id}: ${categoryMap[id]}`));
+      
       console.log('[Xtream] Fetching live streams...');
       const streams = await this.getLiveStreams();
       console.log(`[Xtream] Got ${streams.length} streams`);
+      
+      // Debug: check first few streams for category_id
+      if (streams.length > 0) {
+        console.log('[Xtream] Sample stream category_ids:', streams.slice(0, 5).map(s => s.category_id || 'null'));
+      }
       
       if (streams.length === 0) {
         console.warn('[Xtream] No streams returned from API');
         return [];
       }
 
-      const formatted = this.convertToMIPTVFormat(streams);
+      const formatted = this.convertToMIPTVFormat(streams, categoryMap);
       console.log(`[Xtream] Converted ${formatted.length} channels to MIPTV format`);
       return formatted;
     } catch (error) {

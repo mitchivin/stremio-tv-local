@@ -1,50 +1,16 @@
 /**
  * miptv-combined.js
- * Combined MIPTV addon that fetches TV channels from multiple sources
+ * MIPTV addon that fetches TV channels from Xtream API with category support
  * Mounted at /miptv-combined/ by the main Express app.
  */
 
 'use strict';
 
 const { addonBuilder, getRouter } = require('stremio-addon-sdk');
-const fs = require('fs');
-const path = require('path');
-
-// Load Xtream client if credentials are available
 const XtreamClient = require('./xtream-client');
-const useXtream = process.env.XTREAM_URL && process.env.XTREAM_USERNAME && process.env.XTREAM_PASSWORD;
-
-const MIPTV_SOURCES = [
-  'file://src/public/channels.m3u',
-];
-
-const MIPTV_BACKUP_SOURCE = 'file://src/public/backup.m3u';
-
-const FETCH_HEADERS = {
-  'User-Agent':
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-  Accept: '*/*',
-};
-
-// Non-English language patterns to exclude
-const NON_ENGLISH_PATTERNS = [
-  /🇵🇹|🇧🇷|🇪🇸|🇫🇷|🇮🇹|🇩🇪|🇨🇿|🇮🇳/, // Country flags (non-English speaking)
-  /português|português|español|français|italiano|deutsch|čeština|hindi/i, // Language names
-  /DUNIA|NASIONAL|DAERAH|OLAHRAGA|BERITA|AGAMA|ANAK|GAYA HIDUP|PENGETAHUAN|BOLA \|/, // Indonesian/Asian
-  /Animação|Clássico|Comédia|Cultura|Documentário|Educação|Entretenimento|Família|Infantil|Legislativo|Lifestyle|Religião|Variedades|Viagem|Auto 🏍|Outdoor/, // Portuguese/Spanish/other
-];
-
-// Content types to exclude (movies, series, radio, music, etc.)
-const CONTENT_TO_EXCLUDE = [
-  /movie|film|cinema|série|series|serial|radio|music|song|podcast|audio|documentary|doc\s|anime|cartoon|kids|children|adult|xxx|erotic|shop|telegram|buy me|coffee/i,
-];
-
-// Top-level channel name filters (applied before parsing)
-const CHANNEL_PREFIXES_TO_SKIP = [
-  'AF', // Afghanistan
-];
 
 let cache = null;
+let categoriesCache = null;
 
 function slugify(s) {
   return s
@@ -53,27 +19,11 @@ function slugify(s) {
     .replace(/^-+|-+$/g, '');
 }
 
-function parseM3U(text) {
-  const entries = [];
-  const lines = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  for (let i = 0; i < lines.length; i++) {
-    if (!lines[i].startsWith('#EXTINF')) continue;
-    const logo = (lines[i].match(/tvg-logo="([^"]+)"/i) || [])[1] || '';
-    const group = (lines[i].match(/group-title="([^"]+)"/i) || [])[1] || '';
-    const name = (lines[i].match(/,\s*(.+)$/) || [])[1]?.trim() || '';
-    let url = null;
-    for (let j = i + 1; j < lines.length && j < i + 4; j++) {
-      if (!lines[j].startsWith('#')) {
-        url = lines[j];
-        break;
-      }
-    }
-    if (url && name) entries.push({ group, name, logo, url });
-  }
-  return entries;
+function slugifyCategory(s) {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 async function getCache() {
@@ -83,134 +33,70 @@ async function getCache() {
   const allChannels = [];
   const seen = new Set();
 
-  console.log('[MIPTV Combined] Fetching sources...');
+  console.log('[MIPTV] Fetching from Xtream API...');
 
-  // Try Xtream first if available
-  let xtreamChannels = [];
-  if (useXtream) {
-    try {
-      console.log('[MIPTV Combined] Fetching from Xtream API...');
-      const xtream = new XtreamClient();
-      xtreamChannels = await xtream.getMIPTVChannels();
-      console.log(`[MIPTV Combined] Got ${xtreamChannels.length} channels from Xtream`);
-    } catch (err) {
-      console.error('[MIPTV Combined] Xtream fetch failed:', err.message);
-    }
-  }
+  // Specific categories to include (exact matches)
+  const allowedCategories = [
+    'NZ| NEW ZEALAND HD/4K',
+    'UK| GENERAL',
+    'UK| BBC IPLAYER',
+    'UK| SPORT HD/4K', // category 54 - UK| SPORT RAW VIP DOLBY
+    'US| ENTERTAINMENT',
+    'US| SPORT',
+  ];
+  
+  // Also allow any category starting with AU|
+  const allowedPrefixes = ['AU|'];
 
-  // Process Xtream channels
-  for (const entry of xtreamChannels) {
-    const id = `miptv-xtream-${slugify(entry.name)}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
+  try {
+    const xtream = new XtreamClient();
     
-    allChannels.push({
-      id,
-      name: entry.name,
-      logo: entry.logo,
-      url: entry.url,
-      source: 'xtream',
-      group: entry.group,
-    });
-  }
+    // Fetch channels
+    const xtreamChannels = await xtream.getMIPTVChannels();
+    console.log(`[MIPTV] Got ${xtreamChannels.length} channels from Xtream`);
 
-  // Fetch static M3U sources in parallel with timeout handling
-  const results = await Promise.allSettled([
-    (async () => {
-      let text = '';
-      for (const source of MIPTV_SOURCES) {
-        try {
-          if (source.startsWith('file://')) {
-            text = fs.readFileSync(source.replace('file://', ''), 'utf8');
-          } else {
-            const res = await fetch(source, { redirect: 'follow', headers: FETCH_HEADERS, signal: AbortSignal.timeout(10000) });
-            if (res.ok) {
-              text = await res.text();
-              if (text.length > 100) break;
-            }
-          }
-        } catch (err) {
-          console.error(`[MIPTV Combined] Failed ${source}:`, err.message);
-        }
-      }
-      return { source: 'primary', text };
-    })(),
-    (async () => {
-      let text = '';
-      try {
-        if (MIPTV_BACKUP_SOURCE.startsWith('file://')) {
-          text = fs.readFileSync(MIPTV_BACKUP_SOURCE.replace('file://', ''), 'utf8');
-        } else {
-          const res = await fetch(MIPTV_BACKUP_SOURCE, { redirect: 'follow', headers: FETCH_HEADERS, signal: AbortSignal.timeout(8000) });
-          if (res.ok) {
-            text = await res.text();
-          }
-        }
-      } catch (err) {
-        console.error(`[MIPTV Combined] Failed to fetch backup:`, err.message);
-      }
-      return { source: 'backup', text };
-    })(),
-  ]);
-
-  results.forEach((result) => {
-    if (result.status !== 'fulfilled' || !result.value.text) return;
-    
-    const { source, text } = result.value;
-    console.log(`[MIPTV Combined] Parsing ${source} (${text.length} bytes)`);
-
-    for (const entry of parseM3U(text)) {
-      // Skip by channel name prefix (top-level filter)
-      if (CHANNEL_PREFIXES_TO_SKIP.some(prefix => entry.name.startsWith(prefix))) continue;
-      
-      // Skip non-English content (by group title or channel name)
-      let isNonEnglish = false;
-      for (const pattern of NON_ENGLISH_PATTERNS) {
-        if (pattern.test(entry.group) || pattern.test(entry.name)) {
-          isNonEnglish = true;
-          break;
-        }
-      }
-      if (isNonEnglish) continue;
-      
-      // Skip non-TV content (movies, series, radio, music, etc.)
-      let isNonTV = false;
-      for (const pattern of CONTENT_TO_EXCLUDE) {
-        if (pattern.test(entry.group) || pattern.test(entry.name)) {
-          isNonTV = true;
-          break;
-        }
-      }
-      if (isNonTV) continue;
-      
-      const sourcePrefix = source === 'primary' ? 'primary' : source;
-      const channelName = source === 'backup' ? `${entry.name} [BU]` : entry.name;
-      const id = `miptv-${sourcePrefix}-${slugify(entry.name)}`;
-      
+    for (const entry of xtreamChannels) {
+      const id = `miptv-xtream-${slugify(entry.name)}`;
       if (seen.has(id)) continue;
+      
+      const group = entry.group || 'Unknown';
+      
+      // Check if category is in allowed list or starts with allowed prefix
+      const isAllowed = allowedCategories.includes(group) || 
+                        allowedPrefixes.some(prefix => group.startsWith(prefix));
+      
+      if (!isAllowed) continue;
+      
       seen.add(id);
       
       allChannels.push({
         id,
-        name: channelName,
+        name: entry.name,
         logo: entry.logo,
         url: entry.url,
-        source,
-        group: entry.group,
+        source: 'xtream',
+        group: group,
       });
     }
-  });
+    
+    // Build categories from actual filtered channels
+    const uniqueGroups = new Set(allChannels.map(ch => ch.group));
+    categoriesCache = Array.from(uniqueGroups).sort();
+    
+  } catch (err) {
+    console.error('[MIPTV] Xtream fetch failed:', err.message);
+  }
 
   cache = { allChannels, expiry: now + 60 * 60 * 1000 };
-  console.log(`[MIPTV Combined] Cache built: ${allChannels.length} total channels`);
+  console.log(`[MIPTV] Cache built: ${allChannels.length} total channels, ${categoriesCache?.length || 0} categories`);
   return cache;
 }
 
 const manifest = {
   id: 'org.miptv-combined.iptv',
-  version: '1.0.3',
-  name: 'MIPTV (All Sources)',
-  description: 'MIPTV — Primary and backup stream sources for StremiRow',
+  version: '1.0.7',
+  name: 'MIPTV (Filtered)',
+  description: 'MIPTV — US, UK, AU, NZ channels only',
   resources: ['catalog', 'meta', { name: 'stream', types: ['tv'], idPrefixes: ['miptv-'] }],
   types: ['tv'],
   catalogs: [
@@ -225,13 +111,20 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
+// Helper to get all categories
+async function getCategories() {
+  await getCache(); // Ensure cache is populated
+  return categoriesCache || ['All'];
+}
+
 builder.defineCatalogHandler(async ({ type, id }) => {
   if (type !== 'tv' || id !== 'miptv-combined-channels') return { metas: [] };
+  
   try {
-    console.log('[MIPTV Combined] Catalog request started');
+    console.log(`[MIPTV] Catalog request: ${id}`);
     const { allChannels } = await getCache();
     
-    console.log(`[MIPTV Combined] Returning ${allChannels.length} channels`);
+    console.log(`[MIPTV] Returning ${allChannels.length} filtered channels`);
     return {
       metas: allChannels.map((ch) => ({
         id: ch.id,
@@ -242,7 +135,7 @@ builder.defineCatalogHandler(async ({ type, id }) => {
       })),
     };
   } catch (err) {
-    console.error('[MIPTV Combined] Catalog error:', err.message);
+    console.error('[MIPTV] Catalog error:', err.message);
     return { metas: [] };
   }
 });
@@ -275,10 +168,6 @@ builder.defineStreamHandler(async ({ id }) => {
     if (id.startsWith('miptv-')) {
       const ch = allChannels.find(c => c.id === id);
       if (!ch) return { streams: [] };
-      let sourceName = 'Primary';
-      if (ch.source === 'backup') sourceName = 'Backup';
-      else if (ch.source === 'backup2') sourceName = 'Backup2';
-      else if (ch.source === 'xtream') sourceName = 'Xtream';
       
       // Extract domain from URL for the title
       let urlTitle;
@@ -291,13 +180,13 @@ builder.defineStreamHandler(async ({ id }) => {
       
       return {
         streams: [
-          { url: ch.url, name: sourceName, title: urlTitle, behaviorHints: { notWebReady: false } },
+          { url: ch.url, name: 'Xtream', title: urlTitle, behaviorHints: { notWebReady: false } },
         ],
       };
     }
     return { streams: [] };
   } catch (err) {
-    console.error('[MIPTV Combined] Stream error:', err.message);
+    console.error('[MIPTV] Stream error:', err.message);
     return { streams: [] };
   }
 });

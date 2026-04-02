@@ -10,6 +10,10 @@ const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 const fs = require('fs');
 const path = require('path');
 
+// Load Xtream client if credentials are available
+const XtreamClient = require('./xtream-client');
+const useXtream = process.env.XTREAM_URL && process.env.XTREAM_USERNAME && process.env.XTREAM_PASSWORD;
+
 const MIPTV_SOURCES = [
   'file://src/public/channels.m3u',
 ];
@@ -81,7 +85,36 @@ async function getCache() {
 
   console.log('[MIPTV Combined] Fetching sources...');
 
-  // Fetch all sources in parallel with timeout handling
+  // Try Xtream first if available
+  let xtreamChannels = [];
+  if (useXtream) {
+    try {
+      console.log('[MIPTV Combined] Fetching from Xtream API...');
+      const xtream = new XtreamClient();
+      xtreamChannels = await xtream.getMIPTVChannels();
+      console.log(`[MIPTV Combined] Got ${xtreamChannels.length} channels from Xtream`);
+    } catch (err) {
+      console.error('[MIPTV Combined] Xtream fetch failed:', err.message);
+    }
+  }
+
+  // Process Xtream channels
+  for (const entry of xtreamChannels) {
+    const id = `miptv-xtream-${slugify(entry.name)}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    
+    allChannels.push({
+      id,
+      name: entry.name,
+      logo: entry.logo,
+      url: entry.url,
+      source: 'xtream',
+      group: entry.group,
+    });
+  }
+
+  // Fetch static M3U sources in parallel with timeout handling
   const results = await Promise.allSettled([
     (async () => {
       let text = '';
@@ -245,6 +278,7 @@ builder.defineStreamHandler(async ({ id }) => {
       let sourceName = 'Primary';
       if (ch.source === 'backup') sourceName = 'Backup';
       else if (ch.source === 'backup2') sourceName = 'Backup2';
+      else if (ch.source === 'xtream') sourceName = 'Xtream';
       
       // Extract domain from URL for the title
       let urlTitle;
